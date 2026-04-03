@@ -2,7 +2,11 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111b21">
 <title>Kiwi Sohbet</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -145,6 +149,7 @@ html,body{
   background:var(--bg);
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
+  min-height:0;
 }
 .msgs::-webkit-scrollbar{width:4px;}
 .msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
@@ -261,6 +266,7 @@ html,body{
   position:fixed;inset:0;background:var(--bg);z-index:999;
   display:flex;align-items:flex-start;justify-content:center;
   overflow-y:auto;padding:20px 16px;
+  -webkit-overflow-scrolling:touch;
 }
 .l-box{
   background:var(--side);border:1px solid var(--border);border-radius:20px;
@@ -472,7 +478,7 @@ html,body{
       <div class="empty-ttl">Kiwi Sohbet</div>
       <p class="empty-sub">Arkadaşlarınla gerçek zamanlı konuş. Soldaki listeden birini seç.</p>
     </div>
-    <div id="chatArea" style="display:none;flex-direction:column;height:100%;height:100dvh;overflow:hidden;">
+    <div id="chatArea" style="display:none;flex-direction:column;height:100%;height:100dvh;overflow:hidden;min-height:0;">
       <div class="c-hdr" id="chatHead">
         <button class="back-btn" id="backBtn">&#8592;</button>
       </div>
@@ -1038,6 +1044,11 @@ function initApp(){
 
   // FIX: Admin button visibility — check by username, persistent
   refreshAdminBtn();
+  
+  // FIX: On mobile, show sidebar by default after login
+  if(window.innerWidth <= 768) {
+    document.getElementById('sidebar').classList.add('open');
+  }
 
   usersUnsub=onSnapshot(collection(db,'users'),snap=>{
     allUsers=[];
@@ -1097,11 +1108,12 @@ function updateMyStrip(){
 }
 
 function goBack(){
-  $('sidebar').classList.add('open');
   $('chatArea').style.display='none';
   $('emptyState').style.display='flex';
   activeChat=null;
   if(msgUnsub){msgUnsub();msgUnsub=null;}
+  // Always show sidebar (mobile: open class, desktop: always visible)
+  document.getElementById('sidebar').classList.add('open');
 }
 
 /* ── Sidebar ── */
@@ -1131,7 +1143,9 @@ function renderSidebar(){
 function openChat(user){
   activeChat=user;
   $('emptyState').style.display='none';
-  $('chatArea').style.display='flex';
+  const ca = document.getElementById('chatArea');
+  ca.style.display='flex';
+  ca.style.flexDirection='column';
   renderChatHead(user);
   renderSidebar();
   if(msgUnsub){msgUnsub();msgUnsub=null;}
@@ -1395,7 +1409,11 @@ function renderNCList(){
   f.forEach(u=>{
     const el=document.createElement('div');el.className='citem';
     el.innerHTML=`${avHTML(u,40)}<div class="ci-info"><div class="ci-name">${esc(u.name)}</div><div class="ci-last">${esc(lastSeenTxt(u))}</div></div>`;
-    el.onclick=()=>{$('newChatModal').classList.remove('open');$('sidebar').classList.remove('open');openChat(u);};
+    el.onclick=()=>{
+      $('newChatModal').classList.remove('open');
+      if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
+      openChat(u);
+    };
     list.appendChild(el);
   });
 }

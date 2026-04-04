@@ -1957,6 +1957,29 @@ function renderMessages(msgs, peer) {
   }
 
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
+
+  // Extra features after render
+  addScrollToBottom();
+  updateOnlineCount();
+  updateTabTitle();
+  
+  // Setup swipe-to-reply and double-tap-react on each row
+  const rows = container.querySelectorAll('.msg-row');
+  rows.forEach((row, i) => {
+    const m = msgs[i];
+    if (!m) return;
+    const bub = row.querySelector('.bubble');
+    if (bub) {
+      setupDoubleTapReact(bub, m, peer);
+      setupSwipeReply(row, m, peer);
+    }
+  });
+  
+  // Load pinned message if any
+  const savedPin = localStorage.getItem('kiwi_pinned_' + peer.uid);
+  if (savedPin) {
+    try { pinnedMsg = JSON.parse(savedPin); renderPinnedBar(); } catch(e) {}
+  }
 }
 
 /* ═══════════ CONTEXT MENU ACTIONS ═══════════ */
@@ -3142,27 +3165,8 @@ setInterval(() => {
 }, 30000);
 
 // Call the extra setups after initApp
-const _origInitApp = initApp;
-// Patch renderMessages to add extra features
-const _origRenderMessages = renderMessages;
-function renderMessages(msgs, peer) {
-  _origRenderMessages(msgs, peer);
-  // After render, setup extra features on each row
-  document.querySelectorAll('.msg-row').forEach((row, i) => {
-    const m = msgs[i];
-    if (!m) return;
-    const bub = row.querySelector('.bubble');
-    if (bub) {
-      setupDoubleTapReact(bub, m, peer);
-      setupSwipeReply(row, m, peer);
-    }
-  });
-  // Setup scroll to bottom
-  addScrollToBottom();
-  // Update online count
-  updateOnlineCount();
-  updateTabTitle();
-}
+// Extra features called after renderMessages
+// (renderMessages itself calls these inline now - no duplicate needed)
 
 // Play sound on new incoming messages
 const _origOnSnapshot = onSnapshot;

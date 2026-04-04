@@ -10,6 +10,27 @@
 <title>Kiwi Sohbet</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* Emoji font fix - ensure emojis render as colorful emoji not text */
+@font-face {
+  font-family: 'EmojiFont';
+  src: local('Apple Color Emoji'), local('Segoe UI Emoji'), local('Noto Color Emoji'), local('Android Emoji');
+}
+.emoji-panel button,
+.reaction-picker button,
+.react-chip,
+.brand,
+.me-online,
+.empty-icon,
+.call-action-btn,
+.inc-btn,
+.typing-bubble,
+.deleted-msg,
+.tab-btn,
+.attach-item {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', 'EmojiFont', 'Inter', system-ui, sans-serif !important;
+}
+</style>
+<style>
 /* ═══════════════════════════════════════
    DESIGN TOKENS
 ═══════════════════════════════════════ */
@@ -33,7 +54,7 @@
    RESET
 ═══════════════════════════════════════ */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
 
 /* ═══════════════════════════════════════
    LAYOUT
@@ -337,7 +358,7 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   .emoji-panel { width: calc(100vw - 16px); left: 0; grid-template-columns: repeat(10, 1fr); }
 }
 .emoji-panel.open { display: grid; }
-.emoji-panel button { background: none; border: none; cursor: pointer; font-size: 22px; padding: 5px; border-radius: 8px; line-height: 1; transition: .1s; }
+.emoji-panel button { background: none; border: none; cursor: pointer; font-size: 22px; padding: 5px; border-radius: 8px; line-height: 1; transition: .1s; font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif; }
 .emoji-panel button:hover, .emoji-panel button:active { background: var(--inp); transform: scale(1.2); }
 
 /* attach menu */
@@ -514,7 +535,7 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
 .reaction-picker.open { display: flex; animation: modalIn .15s; }
-.reaction-picker button { background: none; border: none; cursor: pointer; font-size: 24px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; transition: .1s; }
+.reaction-picker button { background: none; border: none; cursor: pointer; font-size: 24px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; transition: .1s; font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif; }
 .reaction-picker button:hover, .reaction-picker button:active { background: var(--inp); transform: scale(1.25); }
 
 /* ═══════════════════════════════════════
@@ -634,7 +655,7 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   <!-- ─── SIDEBAR ─── -->
   <div id="sidebar">
     <div class="s-header">
-      <span class="brand">🐦 Kiwi</span>
+      <span class="brand" style="font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif,'Inter';">🐦 Kiwi</span>
       <button class="icon-btn" id="btn-starred" title="Yıldızlı mesajlar">
         <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       </button>
@@ -1005,7 +1026,24 @@ const rtdb = getDatabase(fbApp);
 
 /* ═══════════ CONSTANTS ═══════════ */
 const COLORS = ['#00a884','#3b82f6','#6366f1','#ec4899','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316'];
-const EMOJIS = '😀😂🥰😎🔥👍❤️🎉💯🙏😅✨💪👋🥳😊🤗👏😍🌟😜🤣😢🎶🍕🐦😴🤔🫡💬🫶✅❌🆗🎯🏆👀🤩😤💀🚀⚡🌈🐱🐶🦁💎🔑🎸🍔🌺🦋'.match(/./gu)||[];
+const EMOJIS = [
+  '😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘',
+  '😗','😙','😚','🤩','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫',
+  '😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰',
+  '😥','😓','🤗','🤔','🫡','🤭','🤫','🤥','😶','😑','😬','🙄','😯','😦','😧',
+  '😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕',
+  '🤑','🤠','😈','👿','👹','👺','💀','☠️','👻','👽','👾','🤖','😺','😸','😹',
+  '😻','😼','😽','🙀','😿','😾','👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️',
+  '🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛',
+  '🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💪','🦾','🦵','🦶','👂','🦻','👃',
+  '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','💕','💞',
+  '💓','💗','💖','💘','💝','💟','☮️','✝️','🕉️','⚛️','🌟','⭐','🌠','✨','🎉',
+  '🎊','🎈','🎁','🎀','🏆','🥇','🎯','🎮','🎲','🃏','🎭','🎨','🎬','🎤','🎵',
+  '🎶','🎸','🎹','🎺','🎻','🥁','🎷','🚀','🛸','🌈','⚡','🔥','💧','🌊','❄️',
+  '🌺','🌸','🌹','🌻','🍀','🌴','🌵','🍕','🍔','🍟','🌮','🍜','🍣','🍦','🎂',
+  '☕','🍺','🥤','🐦','🐱','🐶','🦁','🦊','🐻','🐼','🦋','🌺','💎','🔑','🚗',
+  '✅','❌','⭕','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🆗','🆙','🆒','🆕',
+];
 const REACTION_EMOJIS = ['❤️','👍','😂','😮','😢','🙏'];
 const THEMES = {
   dark:   { bg:'#111b21', panel:'#202c33', inp:'#2a3942', border:'#374045', out:'#005c4b', 'msg-in':'#202c33' },
@@ -1449,6 +1487,8 @@ function initApp() {
     snap.forEach(d => { if (d.id !== me.uid) allUsers.push({ uid: d.id, ...d.data() }); });
     allUsers.sort((a, b) => ((b.online ? 1 : 0) - (a.online ? 1 : 0)) || (a.name || '').localeCompare(b.name || '', 'tr'));
     renderSidebar();
+    updateOnlineCount();
+    updateTabTitle();
   });
 
   // Bind all buttons
@@ -1935,9 +1975,17 @@ function bindContextMenuActions() {
   $('ctx-react').addEventListener('click', e => {
     if (!ctxMsg) return;
     reactingToMsg = ctxMsg;
+    const ctx = $('ctx-menu');
     const picker = $('reaction-picker');
-    picker.style.left = Math.min(parseInt($('ctx-menu').style.left) || 100, window.innerWidth - 280) + 'px';
-    picker.style.top = (parseInt($('ctx-menu').style.top) || 100) - 55 + 'px';
+    // Position picker above ctx menu
+    const ctxLeft = parseInt(ctx.style.left) || 100;
+    const ctxTop = parseInt(ctx.style.top) || 100;
+    const pickerW = 260;
+    const left = Math.max(8, Math.min(ctxLeft, window.innerWidth - pickerW - 8));
+    const top = Math.max(8, ctxTop - 60);
+    picker.style.left = left + 'px';
+    picker.style.top = top + 'px';
+    ctx.classList.remove('open');
     picker.classList.add('open');
   });
 
@@ -2870,6 +2918,324 @@ async function loadAdminData() {
 
   } catch (e) { showToast('Yükleme hatası: ' + e.message); console.error(e); }
 }
+
+
+/* ═══ EXTRA FEATURES ═══ */
+
+// ── STATUS / BIO UPDATE ──
+function updateUserStatus(status) {
+  if (!me) return;
+  updateDoc(doc(db, 'users', me.uid), { bio: status }).catch(() => {});
+  me.bio = status;
+  showToast('Durum güncellendi ✅');
+}
+
+// ── MESSAGE SEARCH ──
+let msgSearchActive = false;
+function openMsgSearch() {
+  const existing = document.getElementById('msg-search-bar');
+  if (existing) { existing.remove(); msgSearchActive = false; return; }
+  msgSearchActive = true;
+  const bar = document.createElement('div');
+  bar.id = 'msg-search-bar';
+  bar.style.cssText = 'padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;';
+  bar.innerHTML = `<input id="msg-search-input" type="text" placeholder="Mesajlarda ara..." style="flex:1;background:var(--inp);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;">
+  <button onclick="document.getElementById('msg-search-bar').remove()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:18px;padding:4px;">✕</button>`;
+  const chatHeader = document.getElementById('chat-header');
+  chatHeader.insertAdjacentElement('afterend', bar);
+  document.getElementById('msg-search-input').focus();
+  document.getElementById('msg-search-input').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.bubble').forEach(bub => {
+      const txt = bub.textContent.toLowerCase();
+      bub.closest('.msg-row').style.opacity = (!q || txt.includes(q)) ? '1' : '0.2';
+    });
+  });
+}
+
+// ── SCROLL TO BOTTOM ──
+function addScrollToBottom() {
+  const msgs = document.getElementById('messages');
+  if (!msgs) return;
+  let btn = document.getElementById('scroll-to-bottom-btn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'scroll-to-bottom-btn';
+    btn.innerHTML = '↓';
+    btn.style.cssText = 'position:absolute;bottom:80px;right:16px;width:40px;height:40px;border-radius:50%;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:10;transition:.2s;';
+    btn.onclick = () => { msgs.scrollTop = msgs.scrollHeight; };
+    const chatArea = document.getElementById('chat-area');
+    if (chatArea) { chatArea.style.position = 'relative'; chatArea.appendChild(btn); }
+  }
+  msgs.addEventListener('scroll', () => {
+    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+    btn.style.display = distFromBottom > 200 ? 'flex' : 'none';
+  });
+}
+
+// ── ONLINE COUNT IN SIDEBAR ──
+function updateOnlineCount() {
+  const onlineCount = allUsers.filter(u => u.online && !u.isGroup).length;
+  const existing = document.getElementById('online-count-badge');
+  if (!existing) {
+    const badge = document.createElement('div');
+    badge.id = 'online-count-badge';
+    badge.style.cssText = 'font-size:11px;color:var(--acc);padding:2px 10px 6px;flex-shrink:0;';
+    badge.textContent = onlineCount + ' kişi çevrimiçi';
+    const tabRow = document.querySelector('.tab-row');
+    if (tabRow) tabRow.insertAdjacentElement('afterend', badge);
+  } else {
+    existing.textContent = onlineCount + ' kişi çevrimiçi';
+  }
+}
+
+// ── NIGHT/DAY AUTO THEME ──
+function autoThemeByTime() {
+  if (savedSettings.theme) return; // don't override manual theme
+  const hour = new Date().getHours();
+  if (hour >= 8 && hour < 20) applyTheme('dark'); // always dark for WA style
+}
+
+// ── KEYBOARD SHORTCUT ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    // Close any open modal
+    ['settings-modal','new-chat-modal','new-group-modal','starred-modal'].forEach(id => {
+      document.getElementById(id)?.classList.remove('open');
+    });
+    document.getElementById('ctx-menu')?.classList.remove('open');
+    document.getElementById('reaction-picker')?.classList.remove('open');
+    document.getElementById('emoji-panel')?.classList.remove('open');
+    document.getElementById('lightbox')?.classList.remove('open');
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && document.getElementById('chat-area')?.style.display !== 'none') {
+    e.preventDefault();
+    openMsgSearch();
+  }
+});
+
+// ── SOUND NOTIFICATION ──
+function playNotifSound() {
+  if (savedSettings.notif === false) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+
+// ── UNREAD COUNTER in tab title ──
+function updateTabTitle() {
+  const total = Object.values(unreadMap).reduce((a, b) => a + b, 0);
+  document.title = total > 0 ? `(${total}) Kiwi Sohbet` : 'Kiwi Sohbet';
+}
+
+// ── DOUBLE TAP REACT ──
+function setupDoubleTapReact(bubble, msg, peer) {
+  let lastTap = 0;
+  bubble.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      e.preventDefault();
+      // Quick heart reaction on double tap
+      const path = peer.isGroup
+        ? ['groups', peer.uid, 'messages']
+        : ['chats', dmChatId(me.uid, peer.uid), 'messages'];
+      const mRef = doc(db, ...path, msg.id);
+      const cur = msg.reactions || {};
+      if (cur[me.uid] === '❤️') {
+        const upd = {...cur}; delete upd[me.uid];
+        updateDoc(mRef, { reactions: upd }).catch(() => {});
+      } else {
+        updateDoc(mRef, { reactions: {...cur, [me.uid]: '❤️'} }).catch(() => {});
+      }
+      // Show heart animation
+      const heart = document.createElement('div');
+      heart.textContent = '❤️';
+      heart.style.cssText = 'position:fixed;font-size:32px;pointer-events:none;z-index:999;animation:heartPop .6s forwards;';
+      const t = e.changedTouches[0];
+      heart.style.left = (t.clientX - 16) + 'px';
+      heart.style.top = (t.clientY - 16) + 'px';
+      document.body.appendChild(heart);
+      setTimeout(() => heart.remove(), 600);
+    }
+    lastTap = now;
+  });
+}
+
+// Add heart pop animation
+const heartStyle = document.createElement('style');
+heartStyle.textContent = `
+@keyframes heartPop {
+  0% { transform: scale(0); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 1; }
+  100% { transform: scale(1) translateY(-40px); opacity: 0; }
+}
+#scroll-to-bottom-btn:hover { background: var(--inp) !important; transform: scale(1.1); }
+.msg-row { animation: msgIn .18s ease; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.citem { animation: none; }
+/* Better scrollbar for webkit */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+/* Unread badge pulse */
+.ci-badge { animation: badgePulse 2s infinite; }
+@keyframes badgePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,168,132,.4); } 50% { box-shadow: 0 0 0 4px rgba(0,168,132,0); } }
+/* Smooth bubble appearance */
+.bubble { transition: background .2s; }
+/* Swipe to reply indicator */
+.msg-row { transition: transform .15s; }
+/* Better focus styles */
+input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px rgba(0,168,132,.2); }
+/* Disabled state */
+button:disabled { opacity: .5; cursor: not-allowed; }
+`;
+document.head.appendChild(heartStyle);
+
+// ── SWIPE TO REPLY (mobile) ──
+function setupSwipeReply(row, msg, peer) {
+  let startX = 0, swiping = false;
+  row.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    swiping = true;
+  }, { passive: true });
+  row.addEventListener('touchmove', e => {
+    if (!swiping) return;
+    const dx = e.touches[0].clientX - startX;
+    const isOut = msg.from === me.uid;
+    if (isOut && dx < -20) row.style.transform = `translateX(${Math.max(dx, -60)}px)`;
+    else if (!isOut && dx > 20) row.style.transform = `translateX(${Math.min(dx, 60)}px)`;
+  }, { passive: true });
+  row.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    row.style.transform = '';
+    swiping = false;
+    if (Math.abs(dx) > 50) {
+      // Trigger reply
+      replyTo = { ...msg, fromName: msg.fromName || (msg.from === me.uid ? me.name : peer.name) };
+      document.getElementById('reply-bar-name').textContent = replyTo.fromName;
+      document.getElementById('reply-bar-text').textContent = makeMsgPreview(replyTo);
+      document.getElementById('reply-bar').classList.add('show');
+      document.getElementById('msg-input').focus();
+    }
+  }, { passive: true });
+}
+
+// ── LAST SEEN LIVE UPDATE ──
+setInterval(() => {
+  // Re-render sidebar timestamps every minute
+  renderSidebar();
+  updateTabTitle();
+}, 60000);
+
+// ── ONLINE STATUS INDICATOR in header ──
+setInterval(() => {
+  if (me) updateDoc(doc(db, 'users', me.uid), { online: true, lastSeen: serverTimestamp() }).catch(() => {});
+}, 30000);
+
+// Call the extra setups after initApp
+const _origInitApp = initApp;
+// Patch renderMessages to add extra features
+const _origRenderMessages = renderMessages;
+function renderMessages(msgs, peer) {
+  _origRenderMessages(msgs, peer);
+  // After render, setup extra features on each row
+  document.querySelectorAll('.msg-row').forEach((row, i) => {
+    const m = msgs[i];
+    if (!m) return;
+    const bub = row.querySelector('.bubble');
+    if (bub) {
+      setupDoubleTapReact(bub, m, peer);
+      setupSwipeReply(row, m, peer);
+    }
+  });
+  // Setup scroll to bottom
+  addScrollToBottom();
+  // Update online count
+  updateOnlineCount();
+  updateTabTitle();
+}
+
+// Play sound on new incoming messages
+const _origOnSnapshot = onSnapshot;
+// Track last msg count to detect new messages
+let lastMsgCounts = {};
+
+// Notify on new message
+function notifyNewMessage(fromName, text) {
+  if (document.hasFocus()) return;
+  playNotifSound();
+  if ('Notification' in window && Notification.permission === 'granted' && savedSettings.notif !== false) {
+    try { new Notification('🐦 ' + fromName, { body: text, icon: '' }); } catch(e) {}
+  }
+}
+
+// ── PROFILE VIEW on avatar click ──
+function showProfileModal(user) {
+  const existing = document.getElementById('profile-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'profile-modal';
+  modal.className = 'modal-overlay open';
+  modal.innerHTML = `
+    <div class="modal-box" style="align-items:center;gap:16px;text-align:center;">
+      <div class="modal-drag"></div>
+      <div style="width:90px;height:90px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;background:${user.color||'#00a884'}22;color:${user.color||'#00a884'};">
+        ${user.photo ? `<img src="${user.photo}" style="width:100%;height:100%;object-fit:cover;">` : (user.initials || user.name?.[0] || '?')}
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:700;">${esc(user.name)}</div>
+        ${user.bio ? `<div style="font-size:13px;color:var(--dim);margin-top:4px;">${esc(user.bio)}</div>` : ''}
+        <div style="font-size:12px;color:${user.online ? 'var(--acc)' : 'var(--dim)'};margin-top:6px;">${user.online ? '● Çevrimiçi' : 'Son görülme: ' + fmtRelTime(user.lastSeen)}</div>
+      </div>
+      <div class="modal-row" style="width:100%;">
+        <button class="modal-btn primary" onclick="document.getElementById('profile-modal').remove();if(window.innerWidth<=768)document.getElementById('sidebar').classList.remove('open');openChat(${JSON.stringify(user).replace(/"/g,'&quot;')})">💬 Mesaj Gönder</button>
+        <button class="modal-btn secondary" onclick="document.getElementById('profile-modal').remove()">Kapat</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+// ── PINNED MESSAGES (simple) ──
+let pinnedMsg = null;
+function pinMessage(msg) {
+  pinnedMsg = msg;
+  localStorage.setItem('kiwi_pinned_' + activeChat?.uid, JSON.stringify(msg));
+  showToast('Mesaj sabitlendi 📌');
+  renderPinnedBar();
+}
+function renderPinnedBar() {
+  const existing = document.getElementById('pinned-bar');
+  if (existing) existing.remove();
+  if (!pinnedMsg || !activeChat) return;
+  const bar = document.createElement('div');
+  bar.id = 'pinned-bar';
+  bar.style.cssText = 'padding:6px 14px;background:rgba(0,168,132,.08);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;';
+  bar.innerHTML = `<span style="font-size:14px;">📌</span><div style="flex:1;min-width:0;"><div style="font-size:11px;color:var(--acc);font-weight:600;">Sabitlenmiş Mesaj</div><div style="font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(makeMsgPreview(pinnedMsg))}</div></div><button onclick="pinnedMsg=null;document.getElementById('pinned-bar')?.remove()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px;">✕</button>`;
+  const msgs = document.getElementById('messages');
+  msgs?.insertAdjacentElement('beforebegin', bar);
+}
+
+// Add pin to context menu
+const ctxSep = document.querySelector('.ctx-sep');
+if (ctxSep) {
+  const pinItem = document.createElement('div');
+  pinItem.className = 'ctx-item';
+  pinItem.id = 'ctx-pin';
+  pinItem.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>Sabitle';
+  pinItem.addEventListener('click', () => { if (ctxMsg) pinMessage(ctxMsg); });
+  ctxSep.insertAdjacentElement('beforebegin', pinItem);
+}
+
 </script>
 </body>
 </html>

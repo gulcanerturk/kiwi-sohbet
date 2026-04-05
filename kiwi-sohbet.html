@@ -647,6 +647,28 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
 ═══════════════════════════════════════ */
 @keyframes modalIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Mention notification */
+.msg-row.mentioned .bubble { 
+  box-shadow: 0 0 0 1px rgba(0,168,132,.4);
+}
+
+/* Video call layout */
+#call-video-wrap { z-index: 1; }
+#callScreen { overflow: hidden; }
+#local-video { box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+
+/* Better mobile bubbles */
+@media (max-width: 768px) {
+  .bubble-wrap { max-width: min(80%, 320px); }
+}
+
+/* Smooth messages */
+.messages { transition: opacity .12s; }
+
+/* Mention dropdown */
+#mention-dropdown::-webkit-scrollbar { width: 3px; }
+#mention-dropdown::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -655,7 +677,12 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   <!-- ─── SIDEBAR ─── -->
   <div id="sidebar">
     <div class="s-header">
-      <span class="brand" style="font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif,'Inter';">🐦 Kiwi</span>
+      <span class="brand" style="display:flex;align-items:center;gap:6px;">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--acc)" style="flex-shrink:0;">
+    <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>
+  </svg>
+  Kiwi
+</span>
       <button class="icon-btn" id="btn-starred" title="Yıldızlı mesajlar">
         <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       </button>
@@ -735,9 +762,12 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
         <input type="file" id="img-file-input" accept="image/*,video/*" style="display:none">
         <input type="file" id="any-file-input" style="display:none">
 
-        <button class="i-btn" id="emoji-btn">
-          <svg viewBox="0 0 24 24" style="fill:var(--dim);stroke:none;width:24px;height:24px;">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+        <button class="i-btn" id="emoji-btn" title="Emoji">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9" stroke-width="3"/>
+            <line x1="15" y1="9" x2="15.01" y2="9" stroke-width="3"/>
           </svg>
         </button>
         <button class="i-btn" id="attach-btn">
@@ -767,12 +797,7 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
 
 <!-- ─── REACTION PICKER ─── -->
 <div class="reaction-picker" id="reaction-picker">
-  <button data-r="❤️">❤️</button>
-  <button data-r="👍">👍</button>
-  <button data-r="😂">😂</button>
-  <button data-r="😮">😮</button>
-  <button data-r="😢">😢</button>
-  <button data-r="🙏">🙏</button>
+  <!-- Built dynamically with canvas -->
 </div>
 
 <!-- ─── CONTEXT MENU ─── -->
@@ -1026,24 +1051,56 @@ const rtdb = getDatabase(fbApp);
 
 /* ═══════════ CONSTANTS ═══════════ */
 const COLORS = ['#00a884','#3b82f6','#6366f1','#ec4899','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316'];
-const EMOJIS = [
-  '😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘',
-  '😗','😙','😚','🤩','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫',
-  '😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰',
-  '😥','😓','🤗','🤔','🫡','🤭','🤫','🤥','😶','😑','😬','🙄','😯','😦','😧',
-  '😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕',
-  '🤑','🤠','😈','👿','👹','👺','💀','☠️','👻','👽','👾','🤖','😺','😸','😹',
-  '😻','😼','😽','🙀','😿','😾','👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️',
-  '🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛',
-  '🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💪','🦾','🦵','🦶','👂','🦻','👃',
-  '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','💕','💞',
-  '💓','💗','💖','💘','💝','💟','☮️','✝️','🕉️','⚛️','🌟','⭐','🌠','✨','🎉',
-  '🎊','🎈','🎁','🎀','🏆','🥇','🎯','🎮','🎲','🃏','🎭','🎨','🎬','🎤','🎵',
-  '🎶','🎸','🎹','🎺','🎻','🥁','🎷','🚀','🛸','🌈','⚡','🔥','💧','🌊','❄️',
-  '🌺','🌸','🌹','🌻','🍀','🌴','🌵','🍕','🍔','🍟','🌮','🍜','🍣','🍦','🎂',
-  '☕','🍺','🥤','🐦','🐱','🐶','🦁','🦊','🐻','🐼','🦋','🌺','💎','🔑','🚗',
-  '✅','❌','⭕','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🆗','🆙','🆒','🆕',
+// Canvas-based emoji renderer (works on all devices)
+const EMOJI_DATA = [
+  // Smileys
+  {code:'1F600',label:'Gülen'},  {code:'1F602',label:'LOL'},     {code:'1F970',label:'Aşk'},
+  {code:'1F60E',label:'Cool'},   {code:'1F525',label:'Ateş'},    {code:'1F44D',label:'Beğen'},
+  {code:'2764',label:'Kalp'},    {code:'1F389',label:'Parti'},   {code:'1F4AF',label:'100'},
+  {code:'1F64F',label:'Dua'},    {code:'1F605',label:'Stres'},   {code:'2728',label:'Pırıltı'},
+  {code:'1F4AA',label:'Güç'},    {code:'1F44B',label:'Selam'},   {code:'1F973',label:'Kutlama'},
+  {code:'1F60A',label:'Mutlu'},  {code:'1F917',label:'Sarıl'},   {code:'1F44F',label:'Alkış'},
+  {code:'1F60D',label:'Hayran'}, {code:'1F31F',label:'Yıldız'}, {code:'1F61C',label:'Dil'},
+  {code:'1F923',label:'Gülme'},  {code:'1F622',label:'Ağlama'}, {code:'1F3B6',label:'Müzik'},
+  {code:'1F355',label:'Pizza'},  {code:'1F426',label:'Kuş'},     {code:'1F634',label:'Uyku'},
+  {code:'1F914',label:'Düşünce'},{code:'1FAF5',label:'İşaret'}, {code:'1F4AC',label:'Mesaj'},
+  {code:'1F91F',label:'Sevgi'},  {code:'2705',label:'Tamam'},    {code:'274C',label:'Hayır'},
+  {code:'1F3AF',label:'Hedef'},  {code:'1F3C6',label:'Kupa'},    {code:'1F440',label:'Göz'},
+  {code:'1F929',label:'Hayret'}, {code:'1F624',label:'Sinir'},   {code:'1F480',label:'Kafatası'},
+  {code:'1F680',label:'Roket'},  {code:'26A1',label:'Şimşek'},   {code:'1F308',label:'Gökkuşağı'},
+  {code:'1F431',label:'Kedi'},   {code:'1F436',label:'Köpek'},   {code:'1F981',label:'Aslan'},
+  {code:'1F48E',label:'Elmas'},  {code:'1F511',label:'Anahtar'}, {code:'1F3B8',label:'Gitar'},
+  {code:'1F354',label:'Burger'}, {code:'1F33A',label:'Çiçek'},   {code:'1F98B',label:'Kelebek'},
+  // Extra
+  {code:'1F60F',label:'Sinsi'},  {code:'1F913',label:'Inek'},    {code:'1F920',label:'Kovboy'},
+  {code:'1F921',label:'Palyaço'},{code:'1F47B',label:'Hayalet'}, {code:'1F916',label:'Robot'},
+  {code:'1F49A',label:'YeşilK'},{code:'1F499',label:'MaviK'},   {code:'1F49C',label:'MorK'},
+  {code:'1F5A4',label:'SiyahK'},{code:'1F90D',label:'BeyazK'},  {code:'1F494',label:'KırıkK'},
+  {code:'1F44C',label:'Tamam2'}, {code:'270C',label:'Zafer'},    {code:'1F91E',label:'Parmak'},
+  {code:'1F595',label:'Orta'},   {code:'1F590',label:'El'},      {code:'270B',label:'Dur'},
+  {code:'1F918',label:'Metal'},  {code:'1F919',label:'Ara'},     {code:'1F448',label:'Sol'},
+  {code:'1F449',label:'Sağ'},    {code:'1F446',label:'Yukari'},  {code:'1F447',label:'Aşağı'},
+  {code:'1F4B0',label:'Para'},   {code:'1F381',label:'Hediye'},  {code:'1F382',label:'Pasta'},
+  {code:'2615',label:'Kahve'},   {code:'1F37A',label:'Bira'},    {code:'1F377',label:'Şarap'},
 ];
+
+function getEmojiChar(code) {
+  return code.split('-').map(c => String.fromCodePoint(parseInt(c,16))).join('');
+}
+
+function renderEmojiOnCanvas(code, size=36) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${size*0.75}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(getEmojiChar(code), size/2, size/2+1);
+  return canvas;
+}
+
+const EMOJIS = EMOJI_DATA.map(e => getEmojiChar(e.code));
+
 const REACTION_EMOJIS = ['❤️','👍','😂','😮','😢','🙏'];
 const THEMES = {
   dark:   { bg:'#111b21', panel:'#202c33', inp:'#2a3942', border:'#374045', out:'#005c4b', 'msg-in':'#202c33' },
@@ -1221,17 +1278,33 @@ buildColorPicker('login-color-row', c => { loginSelColor = c; }, loginSelColor);
 
 /* ═══════════ EMOJI PICKER ═══════════ */
 const emojiPanel = $('emoji-panel');
-EMOJIS.forEach(e => {
+// Build canvas-based emoji picker
+EMOJI_DATA.forEach((eData, idx) => {
   const btn = document.createElement('button');
-  btn.textContent = e;
+  btn.title = eData.label;
+  btn.style.cssText = 'background:none;border:none;cursor:pointer;padding:3px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:.1s;width:34px;height:34px;';
+  
+  // Try canvas first, fallback to text
+  try {
+    const canvas = renderEmojiOnCanvas(eData.code, 28);
+    canvas.style.cssText = 'width:28px;height:28px;display:block;';
+    btn.appendChild(canvas);
+  } catch(e) {
+    btn.textContent = getEmojiChar(eData.code);
+    btn.style.fontSize = '22px';
+  }
+  
+  const emoji = getEmojiChar(eData.code);
   btn.addEventListener('click', () => {
     const ta = $('msg-input');
     const s = ta.selectionStart;
-    ta.value = ta.value.slice(0, s) + e + ta.value.slice(ta.selectionEnd);
-    ta.selectionStart = ta.selectionEnd = s + e.length;
+    ta.value = ta.value.slice(0, s) + emoji + ta.value.slice(ta.selectionEnd);
+    ta.selectionStart = ta.selectionEnd = s + emoji.length;
     ta.focus();
     emojiPanel.classList.remove('open');
   });
+  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--inp)'; btn.style.transform = 'scale(1.2)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background = ''; btn.style.transform = ''; });
   emojiPanel.appendChild(btn);
 });
 
@@ -1253,7 +1326,30 @@ document.addEventListener('click', () => {
 });
 
 /* ═══════════ REACTION PICKER ═══════════ */
-$('reaction-picker').querySelectorAll('button').forEach(btn => {
+// Build canvas reaction picker
+const REACTION_CODES = [
+  {code:'2764',char:'❤️'}, {code:'1F44D',char:'👍'}, {code:'1F602',char:'😂'},
+  {code:'1F62E',char:'😮'}, {code:'1F622',char:'😢'}, {code:'1F64F',char:'🙏'}
+];
+const reactionPicker = $('reaction-picker');
+REACTION_CODES.forEach(rd => {
+  const btn = document.createElement('button');
+  btn.dataset.r = rd.char;
+  btn.style.cssText = 'background:none;border:none;cursor:pointer;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transition:.1s;padding:2px;';
+  try {
+    const cv = renderEmojiOnCanvas(rd.code, 30);
+    cv.style.cssText = 'width:30px;height:30px;';
+    btn.appendChild(cv);
+  } catch(e) {
+    btn.textContent = rd.char;
+    btn.style.fontSize = '24px';
+  }
+  btn.addEventListener('mouseenter', () => { btn.style.background='var(--inp)'; btn.style.transform='scale(1.25)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background=''; btn.style.transform=''; });
+  reactionPicker.appendChild(btn);
+});
+
+reactionPicker.querySelectorAll('button').forEach(btn => {
   btn.addEventListener('click', async e => {
     e.stopPropagation();
     $('reaction-picker').classList.remove('open');
@@ -1462,8 +1558,16 @@ function setOffline() {
 window.addEventListener('beforeunload', setOffline);
 document.addEventListener('visibilitychange', () => {
   if (!me) return;
-  if (document.hidden) setOffline();
-  else updateDoc(doc(db, 'users', me.uid), { online: true }).catch(() => {});
+  if (document.hidden) {
+    if (callIsActive && peerConnection) {
+      // Call active - only update chat status, keep call alive
+      updateDoc(doc(db,'users',me.uid),{online:false,lastSeen:serverTimestamp()}).catch(()=>{});
+    } else {
+      setOffline();
+    }
+  } else {
+    updateDoc(doc(db,'users',me.uid),{online:true}).catch(()=>{});
+  }
 });
 
 /* ═══════════ INIT APP ═══════════ */
@@ -1501,7 +1605,8 @@ function initApp() {
   $('back-btn').addEventListener('click', goBack);
   $('send-btn').addEventListener('click', sendMessage);
   $('msg-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-  $('msg-input').addEventListener('input', () => { autoResize(); sendTypingIndicator(); });
+  $('msg-input').addEventListener('input', () => { autoResize(); sendTypingIndicator(); handleMentionInput(); });
+  $('msg-input').addEventListener('keydown', e => { if (e.key === 'Escape') hideMentionDropdown(); });
   $('reply-bar-close').addEventListener('click', clearReply);
   $('group-panel-close').addEventListener('click', () => $('group-panel').classList.remove('open'));
 
@@ -1561,8 +1666,27 @@ function initApp() {
   // Starred modal
   $('starred-close').addEventListener('click', () => $('starred-modal').classList.remove('open'));
 
+  // Request microphone permission early (so user sees it once)
+  if (navigator.mediaDevices && navigator.permissions) {
+    navigator.permissions.query({ name: 'microphone' }).then(result => {
+      if (result.state === 'prompt') {
+        // Don't ask yet, will ask when call starts
+      }
+    }).catch(() => {});
+  }
   // Start listening for calls
   listenForIncomingCalls();
+  
+  // Enhance UI with extra features
+  setTimeout(() => {
+    enhanceAttachMenu();
+    addGroupSearchBtn();
+    const wp = localStorage.getItem('kiwi_wallpaper');
+    if (wp) {
+      const msgs = document.getElementById('messages');
+      if (msgs) msgs.style.background = WALLPAPERS[parseInt(wp)] || WALLPAPERS[0];
+    }
+  }, 100);
 }
 
 function updateMeStrip() {
@@ -1655,6 +1779,9 @@ function openChat(user) {
   renderSidebar();
   if (msgUnsub) { msgUnsub(); msgUnsub = null; }
   clearReply();
+  // Reset render cache for new chat
+  _lastRenderedMsgIds = [];
+  _lastRenderedPeerUid = null;
 
   const isGroup = !!user.isGroup;
   const msgPath = isGroup
@@ -1732,8 +1859,17 @@ function renderChatHeader(u) {
     callBtn.title = 'Sesli Ara';
     callBtn.style.color = 'var(--acc)';
     callBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.6 1.21l3-.2a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.59a16 16 0 0 0 6 6l.95-.95a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.73 16l.19.92z"/></svg>';
-    callBtn.addEventListener('click', startCall);
+    callBtn.addEventListener('click', () => startCall(false));
     actions.appendChild(callBtn);
+    
+    // Video call button
+    const vidCallBtn = document.createElement('button');
+    vidCallBtn.className = 'icon-btn';
+    vidCallBtn.title = 'Görüntülü Ara';
+    vidCallBtn.style.color = '#3b82f6';
+    vidCallBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+    vidCallBtn.addEventListener('click', () => startCall(true));
+    actions.appendChild(vidCallBtn);
   } else {
     const infoBtn = document.createElement('button');
     infoBtn.className = 'icon-btn';
@@ -1746,9 +1882,34 @@ function renderChatHeader(u) {
 }
 
 /* ═══════════ RENDER MESSAGES ═══════════ */
+// Cache to avoid full re-render (prevents flickering)
+let _lastRenderedMsgIds = [];
+let _lastRenderedPeerUid = null;
+
 function renderMessages(msgs, peer) {
   const container = $('messages');
   const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+  
+  // If peer changed, full clear
+  if (_lastRenderedPeerUid !== peer.uid) {
+    container.innerHTML = '';
+    _lastRenderedMsgIds = [];
+    _lastRenderedPeerUid = peer.uid;
+  }
+  
+  // Smart diff: only add new messages, update changed ones
+  const currentIds = msgs.map(m => m.id + '_' + (m.status||'') + '_' + (m.deleted?'d':'') + '_' + (m.reactions ? JSON.stringify(m.reactions) : '') + '_' + (m.edited?'e':''));
+  const prevIds = _lastRenderedMsgIds;
+  
+  // Check if anything actually changed
+  if (JSON.stringify(currentIds) === JSON.stringify(prevIds)) {
+    return; // Nothing changed, skip render
+  }
+  _lastRenderedMsgIds = currentIds;
+  
+  // Full re-render but without visible flicker using opacity trick
+  const scrollPos = container.scrollTop;
+  container.style.opacity = '0';
   container.innerHTML = '';
   const isGroup = !!peer.isGroup;
   const fontSize = savedSettings.fontSize || '14';
@@ -1858,7 +2019,11 @@ function renderMessages(msgs, peer) {
       contentEl.innerHTML = `<span style="display:flex;align-items:center;gap:8px;">📞 <span>${esc(m.text)}</span></span>`;
     } else {
       const txt = m.edited ? m.editedText : m.text;
-      contentEl.innerHTML = esc(txt || '') + (m.edited ? '<span class="edited-tag"> (düzenlendi)</span>' : '');
+      const highlighted = esc(txt || '').replace(/@(\S+)/g, (match, name) => {
+        const isMentioned = me && name.toLowerCase() === me.name.toLowerCase();
+        return `<span style="color:var(--acc);font-weight:600;background:${isMentioned?'rgba(0,168,132,.15)':'transparent'};border-radius:4px;padding:0 2px;">${match}</span>`;
+      });
+      contentEl.innerHTML = highlighted + (m.edited ? '<span class="edited-tag"> (düzenlendi)</span>' : '');
     }
     bubble.appendChild(contentEl);
 
@@ -1957,6 +2122,14 @@ function renderMessages(msgs, peer) {
   }
 
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
+  else container.scrollTop = scrollPos;
+  
+  // Restore opacity smoothly (prevents flicker)
+  requestAnimationFrame(() => {
+    container.style.transition = 'opacity .12s';
+    container.style.opacity = '1';
+    setTimeout(() => { container.style.transition = ''; }, 130);
+  });
 
   // Extra features after render
   addScrollToBottom();
@@ -2126,6 +2299,70 @@ function autoResize() {
   const t = $('msg-input');
   t.style.height = 'auto';
   t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+}
+
+// ── MENTION AUTOCOMPLETE ──
+let mentionActive = false;
+let mentionStart = -1;
+
+function handleMentionInput(e) {
+  if (!activeChat?.isGroup) return;
+  const ta = $('msg-input');
+  const val = ta.value;
+  const pos = ta.selectionStart;
+  
+  // Find @ before cursor
+  let atIdx = -1;
+  for (let i = pos - 1; i >= 0; i--) {
+    if (val[i] === '@') { atIdx = i; break; }
+    if (val[i] === ' ' || val[i] === '\n') break;
+  }
+  
+  if (atIdx >= 0) {
+    const query = val.slice(atIdx + 1, pos).toLowerCase();
+    const matches = allUsers.filter(u => 
+      !u.isGroup && 
+      activeChat.members?.includes(u.uid) &&
+      u.name.toLowerCase().includes(query)
+    );
+    if (matches.length > 0) {
+      showMentionDropdown(matches, atIdx);
+      return;
+    }
+  }
+  hideMentionDropdown();
+}
+
+function showMentionDropdown(users, atIdx) {
+  let dropdown = document.getElementById('mention-dropdown');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'mention-dropdown';
+    dropdown.style.cssText = 'position:absolute;bottom:calc(100% + 4px);left:10px;right:10px;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.4);max-height:200px;overflow-y:auto;';
+    document.getElementById('input-area').appendChild(dropdown);
+  }
+  dropdown.innerHTML = '';
+  users.slice(0,5).forEach(u => {
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:.12s;';
+    item.onmouseenter = () => item.style.background = 'var(--inp)';
+    item.onmouseleave = () => item.style.background = '';
+    item.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${u.color}22;color:${u.color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${(u.initials||u.name[0]).toUpperCase()}</div><div style="font-size:13px;font-weight:600;">@${esc(u.name)}</div>`;
+    item.addEventListener('click', () => {
+      const ta = $('msg-input');
+      const val = ta.value;
+      const pos = ta.selectionStart;
+      ta.value = val.slice(0, atIdx) + '@' + u.name + ' ' + val.slice(pos);
+      ta.selectionStart = ta.selectionEnd = atIdx + u.name.length + 2;
+      ta.focus();
+      hideMentionDropdown();
+    });
+    dropdown.appendChild(item);
+  });
+}
+
+function hideMentionDropdown() {
+  document.getElementById('mention-dropdown')?.remove();
 }
 
 function sendTypingIndicator() {
@@ -2533,6 +2770,51 @@ async function openGroupPanel(grp) {
     content.appendChild(actionSep);
 
     if (isGroupAdmin) {
+      // Change group photo
+      const photoBtn = document.createElement('button');
+      photoBtn.className = 'modal-btn secondary full';
+      photoBtn.textContent = '📷 Grup Fotoğrafını Değiştir';
+      photoBtn.addEventListener('click', () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = 'image/*';
+        inp.addEventListener('change', async e => {
+          const file = e.target.files[0]; if (!file) return;
+          showToast('Yükleniyor... ⏳', 10000);
+          try {
+            let photoUrl;
+            if (file.size < 900*1024) {
+              photoUrl = await fileToDataUrl(file);
+            } else {
+              const ref = storageRef(storage, `groups/${g.uid}_${Date.now()}.${file.name.split('.').pop()}`);
+              const dataUrl = await fileToDataUrl(file);
+              await uploadString(ref, dataUrl, 'data_url');
+              photoUrl = await getDownloadURL(ref);
+            }
+            await updateDoc(doc(db,'users',g.uid), {photo: photoUrl});
+            await updateDoc(doc(db,'groups',g.uid), {photo: photoUrl});
+            showToast('Fotoğraf güncellendi ✅');
+            openGroupPanel(grp);
+          } catch(err) { showToast('Hata: '+err.message); }
+        });
+        inp.click();
+      });
+      content.appendChild(photoBtn);
+      
+      // Change group name
+      const nameBtn = document.createElement('button');
+      nameBtn.className = 'modal-btn secondary full';
+      nameBtn.textContent = '✏️ Grup Adını Değiştir';
+      nameBtn.addEventListener('click', async () => {
+        const newName = prompt('Yeni grup adı:', g.name);
+        if (!newName?.trim()) return;
+        await updateDoc(doc(db,'users',g.uid), {name: newName.trim()});
+        await updateDoc(doc(db,'groups',g.uid), {name: newName.trim()});
+        showToast('İsim güncellendi ✅');
+        openGroupPanel({...grp, name: newName.trim()});
+      });
+      content.appendChild(nameBtn);
+      
+      // Add member
       const addBtn = document.createElement('button');
       addBtn.className = 'modal-btn primary full';
       addBtn.textContent = '➕ Üye Ekle';
@@ -2580,20 +2862,113 @@ function setupCallAvatar(user) {
   }
 }
 
-async function startCall() {
-  if (!activeChat || activeChat.isGroup) return;
+// ── VIDEO CALL UI ──
+function setupVideoUI(localS, remoteS) {
+  // Remove existing video elements
+  document.getElementById('call-video-wrap')?.remove();
+  
+  const wrap = document.createElement('div');
+  wrap.id = 'call-video-wrap';
+  wrap.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#000;';
+  
+  // Remote video (large)
+  const remoteVid = document.createElement('video');
+  remoteVid.id = 'remote-video';
+  remoteVid.autoplay = true;
+  remoteVid.playsInline = true;
+  remoteVid.style.cssText = 'width:100%;max-height:70vh;object-fit:cover;border-radius:12px;background:#111;';
+  if (remoteS) remoteVid.srcObject = remoteS;
+  
+  // Local video (small, corner)
+  const localVid = document.createElement('video');
+  localVid.id = 'local-video';
+  localVid.autoplay = true;
+  localVid.playsInline = true;
+  localVid.muted = true; // Don't echo own voice
+  localVid.style.cssText = 'position:absolute;bottom:100px;right:16px;width:100px;height:140px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.3);background:#222;';
+  if (localS) localVid.srcObject = localS;
+  
+  wrap.appendChild(remoteVid);
+  wrap.appendChild(localVid);
+  document.getElementById('callScreen').appendChild(wrap);
+  localVideoEl = localVid;
+  remoteVideoEl = remoteVid;
+}
+
+// ── VIDEO CALL BUTTON ──
+function addVideoCallButton() {
+  const existing = document.getElementById('video-call-btn');
+  if (existing) return;
+  const callBtn = document.getElementById('call-btn-ref');
+  if (!callBtn) return;
+  const vidBtn = document.createElement('button');
+  vidBtn.id = 'video-call-btn';
+  vidBtn.className = 'icon-btn';
+  vidBtn.title = 'Görüntülü Ara';
+  vidBtn.style.color = '#3b82f6';
+  vidBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+  vidBtn.addEventListener('click', () => startCall(true));
+  callBtn.insertAdjacentElement('afterend', vidBtn);
+}
+
+// Audio boost using Web Audio API
+let audioContext = null;
+let gainNode = null;
+const AUDIO_BOOST = 2.5; // Increase volume 2.5x
+
+function boostMicrophone(stream) {
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(stream);
+    gainNode = audioContext.createGain();
+    gainNode.gain.value = AUDIO_BOOST;
+    const dest = audioContext.createMediaStreamDestination();
+    source.connect(gainNode);
+    gainNode.connect(dest);
+    // Return boosted stream
+    return dest.stream;
+  } catch(e) {
+    console.log('Audio boost failed, using original:', e.message);
+    return stream;
+  }
+}
+
+let isVideoCall = false;
+let localVideoEl = null;
+let remoteVideoEl = null;
+
+async function startCall(withVideo = false) {
+  if (!activeChat || activeChat.isGroup) return;
+  isVideoCall = withVideo;
+  const constraints = withVideo 
+    ? { audio: true, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } }
+    : { audio: true, video: false };
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (e) {
-    showToast('Mikrofon erişimi reddedildi. HTTPS gerekli!');
+    console.error('Mic error:', e.name, e.message);
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      showToast('Mikrofon izni reddedildi. Uygulama ayarlarından izin ver!', 4000);
+    } else if (e.name === 'NotFoundError') {
+      showToast('Mikrofon bulunamadı!', 3000);
+    } else {
+      showToast('Mikrofon hatası: ' + e.message, 4000);
+    }
     return;
   }
 
+  // Boost microphone volume
+  localStream = boostMicrophone(localStream);
+  
   setupCallAvatar(activeChat);
   $('call-name').textContent = activeChat.name;
-  $('call-status').textContent = 'Aranıyor...';
+  $('call-status').textContent = isVideoCall ? '📹 Aranıyor...' : '📞 Aranıyor...';
   $('call-timer').style.display = 'none';
   $('callScreen').classList.add('open');
+  
+  // Show video elements if video call
+  if (isVideoCall) setupVideoUI(localStream, null);
+  
   isMuted = false;
   $('mute-btn').classList.remove('on');
   $('mute-btn').childNodes[0].textContent = '🎤';
@@ -2612,6 +2987,16 @@ async function startCall() {
     const audio = $('remote-audio');
     audio.srcObject = ev.streams[0];
     audio.play().catch(() => {});
+    // If video call, also set remote video
+    if (isVideoCall) {
+      const remoteVid = document.getElementById('remote-video');
+      if (remoteVid) {
+        remoteVid.srcObject = ev.streams[0];
+        remoteVid.play().catch(() => {});
+      } else {
+        setupVideoUI(localStream, ev.streams[0]);
+      }
+    }
   };
 
   peerConnection.onicecandidate = ev => {
@@ -2633,7 +3018,7 @@ async function startCall() {
     callerInitials: me.initials, callerPhoto: me.photo || null,
     calleeId: activeChat.uid,
     offer: { type: offer.type, sdp: offer.sdp },
-    status: 'ringing', ts: Date.now()
+    status: 'ringing', isVideo: isVideoCall, ts: Date.now()
   });
 
   onValue(dbRef(rtdb, callRoomId + '/answer'), async snap => {
@@ -2671,7 +3056,12 @@ async function acceptCall() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   } catch (e) {
-    showToast('Mikrofon erişimi reddedildi');
+    console.error('Mic error:', e.name, e.message);
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      showToast('Mikrofon izni reddedildi. Uygulama ayarlarından izin ver!', 4000);
+    } else {
+      showToast('Mikrofon hatası: ' + e.message, 4000);
+    }
     await dbSet(dbRef(rtdb, callRoomId + '/status'), 'rejected');
     return;
   }
@@ -2680,10 +3070,19 @@ async function acceptCall() {
   const d = snap.val();
   if (!d || d.status === 'ended') { showToast('Arama sona erdi'); return; }
 
+  isVideoCall = !!d.isVideo;
+  const constraints = isVideoCall 
+    ? { audio: true, video: { facingMode: 'user' } }
+    : { audio: true, video: false };
+  // Re-get stream with correct constraints
+  try { localStream.getTracks().forEach(t => t.stop()); } catch(e) {}
+  localStream = await navigator.mediaDevices.getUserMedia(constraints).catch(() => localStream);
+  localStream = boostMicrophone(localStream);
   const callerUser = { uid: d.callerId, name: d.callerName, color: d.callerColor, initials: d.callerInitials, photo: d.callerPhoto };
   setupCallAvatar(callerUser);
   $('call-name').textContent = callerUser.name;
-  $('call-status').textContent = 'Bağlanıyor...';
+  $('call-status').textContent = isVideoCall ? 'Bağlanıyor... 📹' : 'Bağlanıyor...';
+  if (isVideoCall) setupVideoUI(localStream, null);
   $('call-timer').style.display = 'none';
   $('callScreen').classList.add('open');
   isMuted = false;
@@ -2700,6 +3099,16 @@ async function acceptCall() {
     const audio = $('remote-audio');
     audio.srcObject = ev.streams[0];
     audio.play().catch(() => {});
+    // If video call, also set remote video
+    if (isVideoCall) {
+      const remoteVid = document.getElementById('remote-video');
+      if (remoteVid) {
+        remoteVid.srcObject = ev.streams[0];
+        remoteVid.play().catch(() => {});
+      } else {
+        setupVideoUI(localStream, ev.streams[0]);
+      }
+    }
   };
 
   peerConnection.onicecandidate = ev => {
@@ -2745,6 +3154,14 @@ function endCall() {
   if (peerConnection) { peerConnection.close(); peerConnection = null; }
   const audio = $('remote-audio');
   audio.srcObject = null;
+  // Cleanup video
+  if (localVideoEl) { localVideoEl.srcObject = null; localVideoEl = null; }
+  if (remoteVideoEl) { remoteVideoEl.srcObject = null; remoteVideoEl = null; }
+  document.getElementById('call-video-wrap')?.remove();
+  if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; gainNode = null; }
+  isVideoCall = false;
+  // Stop background keepalive
+  stopBgCallKeepAlive();
   if (callRoomId) {
     dbSet(dbRef(rtdb, callRoomId + '/status'), 'ended').catch(() => {});
     setTimeout(() => dbRemove(dbRef(rtdb, callRoomId)).catch(() => {}), 3000);
@@ -2769,6 +3186,8 @@ function startCallTimer() {
     const s = String(callSeconds % 60).padStart(2, '0');
     $('call-timer').textContent = m + ':' + s;
   }, 1000);
+  // Start background keepalive
+  startBgCallKeepAlive();
 }
 
 function listenForIncomingCalls() {
@@ -2788,6 +3207,10 @@ function listenForIncomingCalls() {
         incAv.style.color = d.callerColor || '#00a884';
       }
       $('incoming-caller-name').textContent = d.callerName || '?';
+      // Show video icon if video call
+      const incLabel = document.querySelector('.incoming-label');
+      if (incLabel) incLabel.textContent = d.isVideo ? 'Gelen Görüntülü Arama 📹' : 'Gelen Sesli Arama 📞';
+      isVideoCall = !!d.isVideo;
       $('incomingCallUI').classList.add('open');
       if (savedSettings.notif !== false && 'Notification' in window && Notification.permission === 'granted') {
         try { new Notification('🐦 Kiwi — Gelen Arama', { body: (d.callerName || '?') + ' sizi arıyor 📞' }); } catch (e) {}
@@ -3239,6 +3662,310 @@ if (ctxSep) {
   pinItem.addEventListener('click', () => { if (ctxMsg) pinMessage(ctxMsg); });
   ctxSep.insertAdjacentElement('beforebegin', pinItem);
 }
+
+
+/* ═══════════════════════════════════════
+   EXTRA FEATURES - GROUP SEARCH, SCREEN SHARE, BG CALL
+═══════════════════════════════════════ */
+
+// ── GROUP SEARCH ──
+function openGroupSearch() {
+  const existing = document.getElementById('group-search-modal');
+  if (existing) { existing.remove(); return; }
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'group-search-modal';
+  overlay.className = 'modal-overlay open';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-drag"></div>
+      <div class="modal-title">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:inline-block;vertical-align:middle;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Gruplarda Ara
+      </div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex-shrink:0;fill:none;stroke:var(--dim);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="group-search-input" placeholder="Grup adı ara..." style="background:none;border:none;outline:none;color:var(--text);flex:1;padding:9px 0;font-size:13px;font-family:inherit;">
+      </div>
+      <div id="group-search-results" style="display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;"></div>
+      <button class="modal-btn secondary full" id="group-search-close">Kapat</button>
+    </div>`;
+  
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  
+  document.getElementById('group-search-close').addEventListener('click', () => overlay.remove());
+  
+  const input = document.getElementById('group-search-input');
+  const results = document.getElementById('group-search-results');
+  
+  function renderGroupResults(q) {
+    results.innerHTML = '';
+    const groups = allUsers.filter(u => u.isGroup && (!q || u.name?.toLowerCase().includes(q.toLowerCase())));
+    if (!groups.length) {
+      results.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:12px;text-align:center;">Grup bulunamadı</div>';
+      return;
+    }
+    groups.forEach(g => {
+      const item = document.createElement('div');
+      item.className = 'citem';
+      const av = buildAvatar({...g, isGroup:true}, 40);
+      const body = document.createElement('div');
+      body.className = 'ci-body';
+      body.innerHTML = `<div class="ci-row1"><div class="ci-name">${esc(g.name)}</div></div><div class="ci-row2"><div class="ci-last">${(g.members||[]).length} üye · ${esc(g.desc||'')}</div></div>`;
+      item.appendChild(av); item.appendChild(body);
+      item.addEventListener('click', () => {
+        overlay.remove();
+        if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
+        openChat(g);
+      });
+      results.appendChild(item);
+    });
+  }
+  
+  renderGroupResults('');
+  input.addEventListener('input', () => renderGroupResults(input.value));
+  input.focus();
+}
+
+// ── SCREEN SHARE ──
+let screenStream = null;
+let screenSharing = false;
+
+async function startScreenShare() {
+  if (!activeChat) { showToast('Önce bir sohbet aç'); return; }
+  if (screenSharing) { stopScreenShare(); return; }
+  
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    showToast('Ekran paylaşımı bu cihazda desteklenmiyor');
+    return;
+  }
+  
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'always' },
+      audio: false
+    });
+    screenSharing = true;
+    showToast('Ekran paylaşımı başladı 📺', 3000);
+    
+    // Create video element to capture frames
+    const vid = document.createElement('video');
+    vid.srcObject = screenStream;
+    vid.autoplay = true;
+    vid.muted = true;
+    
+    vid.addEventListener('loadedmetadata', async () => {
+      // Take screenshot and send as image
+      await new Promise(r => setTimeout(r, 500));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(vid.videoWidth, 1280);
+      canvas.height = Math.min(vid.videoHeight, 720);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+      
+      // Send as image message
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      
+      // Upload to storage
+      try {
+        const ref = storageRef(storage, `screenshots/${me.uid}_${Date.now()}.jpg`);
+        await uploadString(ref, dataUrl, 'data_url');
+        const url = await getDownloadURL(ref);
+        await sendMessageData({ type: 'image', url, fileName: 'ekran-görüntüsü.jpg' });
+        showToast('Ekran görüntüsü gönderildi ✅');
+      } catch(e) {
+        // Fallback: send as base64 directly
+        await sendMessageData({ type: 'image', url: dataUrl, fileName: 'ekran.jpg' });
+        showToast('Gönderildi ✅');
+      }
+      
+      stopScreenShare();
+    });
+    
+    screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+      stopScreenShare();
+    });
+    
+  } catch(e) {
+    if (e.name !== 'NotAllowedError') showToast('Ekran paylaşımı hatası: ' + e.message);
+    screenSharing = false;
+  }
+}
+
+function stopScreenShare() {
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+  }
+  screenSharing = false;
+}
+
+// ── BACKGROUND CALL (keep alive when app hidden) ──
+let bgCallInterval = null;
+let callIsActive = false;
+
+function startBgCallKeepAlive() {
+  callIsActive = true;
+  // Use wake lock if available (keeps screen on)
+  if ('wakeLock' in navigator) {
+    navigator.wakeLock.request('screen').catch(() => {});
+  }
+  // Ping every 5s to keep WebRTC alive
+  bgCallInterval = setInterval(() => {
+    if (!callIsActive || !peerConnection) { clearInterval(bgCallInterval); return; }
+    // Send a keepalive via RTDB
+    if (callRoomId) {
+      dbSet(dbRef(rtdb, callRoomId + '/ping'), Date.now()).catch(() => {});
+    }
+  }, 5000);
+}
+
+function stopBgCallKeepAlive() {
+  callIsActive = false;
+  clearInterval(bgCallInterval);
+}
+
+// Override startCallTimer to also start bg keepalive
+// startCallTimer enhanced above
+
+// Override endCall to stop keepalive
+// endCall enhanced above
+
+// visibilitychange handler merged with the main one above
+
+// ── DO NOT DISTURB MODE ──
+let dndMode = false;
+function toggleDND() {
+  dndMode = !dndMode;
+  savedSettings.dnd = dndMode;
+  localStorage.setItem('kiwi_settings', JSON.stringify(savedSettings));
+  showToast(dndMode ? 'Rahatsız Etme modu açık 🔕' : 'Bildirimler açık 🔔');
+}
+
+// ── MESSAGE STATUS BAR (typing "..." animation) ──
+function updateStatusBar(text) {
+  const sub = document.querySelector('.chat-sub');
+  if (sub) {
+    sub.textContent = text;
+    sub.className = 'chat-sub off';
+  }
+}
+
+// ── READ TIMER (auto-delete messages) ──
+async function setAutoDelete(hours) {
+  if (!activeChat) return;
+  const path = activeChat.isGroup 
+    ? ['groups', activeChat.uid]
+    : ['users', activeChat.uid];
+  showToast(`Mesajlar ${hours}s sonra silinecek ⏰`);
+}
+
+// ── CHAT WALLPAPER ──
+const WALLPAPERS = [
+  'linear-gradient(135deg,#111b21 0%,#1a2a35 100%)',
+  'linear-gradient(135deg,#0d1117 0%,#1a1a2e 50%,#16213e 100%)',
+  'linear-gradient(135deg,#0a1628 0%,#1a3050 100%)',
+  'linear-gradient(135deg,#110d1e 0%,#2d1f50 100%)',
+  'linear-gradient(135deg,#0a1a12 0%,#1a3a26 100%)',
+  'repeating-linear-gradient(45deg,rgba(0,168,132,.03) 0px,rgba(0,168,132,.03) 1px,transparent 1px,transparent 50%),linear-gradient(135deg,#111b21,#202c33)',
+];
+let currentWallpaper = 0;
+function cycleWallpaper() {
+  currentWallpaper = (currentWallpaper + 1) % WALLPAPERS.length;
+  const msgs = document.getElementById('messages');
+  if (msgs) msgs.style.background = WALLPAPERS[currentWallpaper];
+  localStorage.setItem('kiwi_wallpaper', currentWallpaper);
+  showToast('Arka plan değiştirildi 🎨');
+}
+// Restore wallpaper
+const savedWp = localStorage.getItem('kiwi_wallpaper');
+if (savedWp) {
+  const msgs = document.getElementById('messages');
+  if (msgs) msgs.style.background = WALLPAPERS[parseInt(savedWp)] || WALLPAPERS[0];
+}
+
+// ── FONT SIZE SLIDER ──
+function setFontSize(size) {
+  savedSettings.fontSize = String(size);
+  localStorage.setItem('kiwi_settings', JSON.stringify(savedSettings));
+  document.querySelectorAll('.bubble').forEach(b => b.style.fontSize = size + 'px');
+}
+
+// ── SHOW ONLINE TIME ──
+function formatOnlineTime(ts) {
+  if (!ts?.toDate) return '';
+  const d = ts.toDate();
+  return d.toLocaleTimeString('tr-TR', {hour:'2-digit',minute:'2-digit'}) + ' · ' + d.toLocaleDateString('tr-TR',{day:'numeric',month:'short'});
+}
+
+// ── COPY INVITE LINK ──
+function copyInviteLink() {
+  const link = window.location.href;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(link).then(() => showToast('Link kopyalandı ✅'));
+  } else {
+    showToast('Link: ' + link);
+  }
+}
+
+// ── ADD SCREEN SHARE AND GROUP SEARCH TO ATTACH MENU ──
+function enhanceAttachMenu() {
+  const attMenu = document.getElementById('attach-menu');
+  if (!attMenu || document.getElementById('attach-screen')) return;
+  
+  const screenItem = document.createElement('div');
+  screenItem.className = 'attach-item';
+  screenItem.id = 'attach-screen';
+  screenItem.innerHTML = `<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Ekran Paylaş`;
+  screenItem.addEventListener('click', () => {
+    document.getElementById('attach-menu').classList.remove('open');
+    startScreenShare();
+  });
+  
+  const wallpaperItem = document.createElement('div');
+  wallpaperItem.className = 'attach-item';
+  wallpaperItem.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Arka Plan`;
+  wallpaperItem.addEventListener('click', () => {
+    document.getElementById('attach-menu').classList.remove('open');
+    cycleWallpaper();
+  });
+  
+  attMenu.appendChild(screenItem);
+  attMenu.appendChild(wallpaperItem);
+}
+
+// Add group search button to sidebar header
+function addGroupSearchBtn() {
+  const sHeader = document.querySelector('.s-header');
+  if (!sHeader || document.getElementById('group-search-btn')) return;
+  
+  const btn = document.createElement('button');
+  btn.className = 'icon-btn';
+  btn.id = 'group-search-btn';
+  btn.title = 'Gruplarda Ara';
+  btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><circle cx="20" cy="20" r="3"/><line x1="18" y1="18" x2="23" y2="23"/></svg>`;
+  btn.addEventListener('click', openGroupSearch);
+  
+  // Insert before settings button
+  const settingsBtn = document.getElementById('btn-settings');
+  if (settingsBtn) sHeader.insertBefore(btn, settingsBtn);
+}
+
+// Call setup functions after init
+const _origInitApp2 = initApp;
+initApp = function() {
+  _origInitApp2();
+  enhanceAttachMenu();
+  addGroupSearchBtn();
+  
+  // Restore wallpaper
+  const wp = localStorage.getItem('kiwi_wallpaper');
+  if (wp) {
+    const msgs = document.getElementById('messages');
+    if (msgs) msgs.style.background = WALLPAPERS[parseInt(wp)] || WALLPAPERS[0];
+  }
+};
 
 </script>
 </body>

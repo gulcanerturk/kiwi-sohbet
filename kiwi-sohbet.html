@@ -1018,7 +1018,8 @@ button, .mbtn, .modal-btn,
       <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
       <span>Kapat</span>
     </button>
-    <button class="call-action-btn spk" id="spk-btn" title="Hoparlör">
+    <!-- Speaker button only on mobile -->
+    <button class="call-action-btn spk" id="spk-btn" title="Hoparlör" style="display:none;">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
       <span>Hoparlör</span>
     </button>
@@ -1171,7 +1172,7 @@ const THEMES = {
 };
 const ADMIN_USERS = ['admin', 'kiwi'];
 const ADMIN_PASS = 'kiwiadmin2025';
-const ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+// ICE_CONFIG defined in WebRTC section
 
 /* ═══════════ STATE ═══════════ */
 let me = null;
@@ -1686,10 +1687,16 @@ function initApp() {
 
   // Call buttons
   $('end-call-btn').addEventListener('click', endCall);
-  $('mute-btn').addEventListener('click', () => {
+  document.getElementById('mute-btn').addEventListener('click', () => {
     isMuted = !isMuted;
-    $('mute-btn').classList.toggle('on', isMuted);
-    $('mute-btn').childNodes[0].textContent = isMuted ? '🔇' : '🎤';
+    const mb = document.getElementById('mute-btn');
+    if (mb) {
+      mb.classList.toggle('on', isMuted);
+      const svg = mb.querySelector('svg');
+      if (svg) { svg.style.opacity = isMuted ? '0.4' : '1'; svg.style.stroke = isMuted ? '#f15c6d' : 'currentColor'; }
+      const sp = mb.querySelector('span');
+      if (sp) sp.textContent = isMuted ? 'Aç' : 'Sessiz';
+    }
     if (localStream) localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
   });
   $('spk-btn').addEventListener('click', () => $('spk-btn').classList.toggle('on'));
@@ -1741,6 +1748,7 @@ function initApp() {
   setTimeout(() => {
     enhanceAttachMenu();
     addGroupSearchBtn();
+    updateSpeakerBtnVisibility();
     const wp = localStorage.getItem('kiwi_wallpaper');
     if (wp) {
       const msgs = document.getElementById('messages');
@@ -2913,392 +2921,631 @@ async function openGroupPanel(grp) {
 }
 
 /* ═══════════ CALLS (WebRTC) ═══════════ */
+// setupCallAvatar in WebRTC section
+
+// ══════════════════════════════════════════
+// WEBRTC CALL SYSTEM - Complete rewrite
+// ══════════════════════════════════════════
+
+let isVideoCall = false;
+let localVideoEl = null;
+let remoteVideoEl = null;
+let audioContext = null;
+let gainNode = null;
+let callIsActive = false;
+let bgCallInterval = null;
+const AUDIO_BOOST = 2.0;
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+  ],
+  iceCandidatePoolSize: 10,
+};
+
+// Boost audio without touching video tracks
+function boostAudio(stream) {
+  try {
+    const audioTracks = stream.getAudioTracks();
+    const videoTracks = stream.getVideoTracks();
+    if (!audioTracks.length) return stream;
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioContext.createMediaStreamSource(new MediaStream(audioTracks));
+    gainNode = audioContext.createGain();
+    gainNode.gain.value = AUDIO_BOOST;
+    const dest = audioContext.createMediaStreamDestination();
+    src.connect(gainNode);
+    gainNode.connect(dest);
+    const out = new MediaStream();
+    dest.stream.getAudioTracks().forEach(t => out.addTrack(t));
+    videoTracks.forEach(t => out.addTrack(t));
+    return out;
+  } catch(e) {
+    console.warn('Audio boost failed:', e.message);
+    return stream;
+  }
+}
+
+// Setup video UI for video calls
+function setupVideoUI(localS, remoteS) {
+  document.getElementById('call-video-wrap')?.remove();
+  const cs = document.getElementById('callScreen');
+  
+  const wrap = document.createElement('div');
+  wrap.id = 'call-video-wrap';
+  wrap.style.cssText = 'position:absolute;inset:0;z-index:5;background:#000;';
+  
+  // Remote video (fullscreen background)
+  const rv = document.createElement('video');
+  rv.id = 'remote-video';
+  rv.setAttribute('autoplay', 'true');
+  rv.setAttribute('playsinline', 'true');
+  rv.setAttribute('webkit-playsinline', 'true');
+  rv.muted = false;
+  rv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;';
+  wrap.appendChild(rv);
+  
+  // Local video (small corner)
+  const lv = document.createElement('video');
+  lv.id = 'local-video';
+  lv.setAttribute('autoplay', 'true');
+  lv.setAttribute('playsinline', 'true');
+  lv.setAttribute('webkit-playsinline', 'true');
+  lv.muted = true;
+  lv.style.cssText = 'position:absolute;bottom:120px;right:14px;width:100px;height:148px;object-fit:cover;border-radius:12px;border:2.5px solid rgba(255,255,255,.5);z-index:6;background:#222;box-shadow:0 4px 16px rgba(0,0,0,.6);';
+  wrap.appendChild(lv);
+  
+  cs.insertBefore(wrap, cs.firstChild);
+  localVideoEl = lv;
+  remoteVideoEl = rv;
+  
+  // Set streams
+  if (localS) {
+    const vTracks = localS.getVideoTracks();
+    if (vTracks.length) {
+      lv.srcObject = new MediaStream([vTracks[0]]);
+      lv.play().catch(() => {});
+    }
+  }
+  if (remoteS) {
+    rv.srcObject = remoteS;
+    rv.play().catch(() => {});
+  }
+  
+  // Push call info above video
+  cs.querySelectorAll('.call-avatar,.call-name,.call-status').forEach(el => {
+    el.style.position = 'relative';
+    el.style.zIndex = '10';
+  });
+}
+
+function updateRemoteVideo(stream) {
+  if (!remoteVideoEl) return;
+  remoteVideoEl.srcObject = stream;
+  remoteVideoEl.play().catch(() => {});
+}
+
+// Setup avatar for call screen
 function setupCallAvatar(user) {
-  const av = $('call-avatar');
-  av.innerHTML = '';
+  const av = document.getElementById('call-avatar');
+  if (!av) return;
   if (user.photo) {
-    av.innerHTML = `<img src="${user.photo}">`;
+    av.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = user.photo;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+    av.appendChild(img);
   } else {
+    av.innerHTML = '';
     av.textContent = user.initials || user.name?.[0] || '?';
     av.style.background = (user.color || '#00a884') + '22';
     av.style.color = user.color || '#00a884';
   }
 }
 
-// ── VIDEO CALL UI ──
-function setupVideoUI(localS, remoteS) {
-  document.getElementById('call-video-wrap')?.remove();
-  
-  const callScreen = document.getElementById('callScreen');
-  const wrap = document.createElement('div');
-  wrap.id = 'call-video-wrap';
-  wrap.style.cssText = 'position:absolute;inset:0;z-index:1;background:#000;display:flex;align-items:center;justify-content:center;';
-  
-  // Remote video - full screen
-  const remoteVid = document.createElement('video');
-  remoteVid.id = 'remote-video';
-  remoteVid.setAttribute('autoplay', '');
-  remoteVid.setAttribute('playsinline', '');
-  remoteVid.setAttribute('webkit-playsinline', '');
-  remoteVid.muted = false;
-  remoteVid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;';
-  if (remoteS) {
-    remoteVid.srcObject = remoteS;
-    remoteVid.play().catch(e => console.log('remote play err:', e));
-  }
-  
-  // Local video - small corner
-  const localVid = document.createElement('video');
-  localVid.id = 'local-video';
-  localVid.setAttribute('autoplay', '');
-  localVid.setAttribute('playsinline', '');
-  localVid.setAttribute('webkit-playsinline', '');
-  localVid.muted = true;
-  localVid.style.cssText = 'position:absolute;bottom:110px;right:16px;width:110px;height:160px;object-fit:cover;border-radius:14px;border:2px solid rgba(255,255,255,.4);background:#222;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.5);';
-  if (localS) {
-    // Get original stream's video track (before boost)
-    const videoTracks = localS.getVideoTracks();
-    if (videoTracks.length > 0) {
-      const localVideoStream = new MediaStream([videoTracks[0]]);
-      localVid.srcObject = localVideoStream;
-    } else {
-      localVid.srcObject = localS;
-    }
-    localVid.play().catch(e => console.log('local play err:', e));
-  }
-  
-  wrap.appendChild(remoteVid);
-  wrap.appendChild(localVid);
-  callScreen.appendChild(wrap);
-  localVideoEl = localVid;
-  remoteVideoEl = remoteVid;
-  
-  // Hide call avatar/name when video is on
-  callScreen.querySelectorAll('.call-avatar, .call-name, .call-status').forEach(el => {
-    el.style.display = 'none';
-  });
-  // Make call-timer and buttons visible above video
-  callScreen.querySelector('.call-actions').style.zIndex = '3';
-  const timerEl = callScreen.querySelector('.call-timer');
-  if (timerEl) { timerEl.style.zIndex = '3'; timerEl.style.position = 'relative'; }
+// Keep call alive in background
+function startBgKeepAlive() {
+  callIsActive = true;
+  if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+  clearInterval(bgCallInterval);
+  bgCallInterval = setInterval(() => {
+    if (!callIsActive || !peerConnection) { clearInterval(bgCallInterval); return; }
+    if (callRoomId) dbSet(dbRef(rtdb, callRoomId + '/ping'), Date.now()).catch(() => {});
+    // Keep audio context alive
+    if (audioContext && audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+  }, 4000);
 }
 
-// ── VIDEO CALL BUTTON ──
-function addVideoCallButton() {
-  const existing = document.getElementById('video-call-btn');
-  if (existing) return;
-  const callBtn = document.getElementById('call-btn-ref');
-  if (!callBtn) return;
-  const vidBtn = document.createElement('button');
-  vidBtn.id = 'video-call-btn';
-  vidBtn.className = 'icon-btn';
-  vidBtn.title = 'Görüntülü Ara';
-  vidBtn.style.color = '#3b82f6';
-  vidBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
-  vidBtn.addEventListener('click', () => startCall(true));
-  callBtn.insertAdjacentElement('afterend', vidBtn);
+function stopBgKeepAlive() {
+  callIsActive = false;
+  clearInterval(bgCallInterval);
 }
 
-// Audio boost using Web Audio API
-let audioContext = null;
-let gainNode = null;
-const AUDIO_BOOST = 2.5; // Increase volume 2.5x
-
-function boostMicrophone(stream) {
-  try {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    // Only boost audio, keep video tracks intact
-    const audioTracks = stream.getAudioTracks();
-    const videoTracks = stream.getVideoTracks();
-    if (!audioTracks.length) return stream;
-    
-    // Create a new stream with just audio for boosting
-    const audioOnlyStream = new MediaStream(audioTracks);
-    const source = audioContext.createMediaStreamSource(audioOnlyStream);
-    gainNode = audioContext.createGain();
-    gainNode.gain.value = AUDIO_BOOST;
-    const dest = audioContext.createMediaStreamDestination();
-    source.connect(gainNode);
-    gainNode.connect(dest);
-    
-    // Combine boosted audio + original video into one stream
-    const boostedStream = new MediaStream();
-    dest.stream.getAudioTracks().forEach(t => boostedStream.addTrack(t));
-    videoTracks.forEach(t => boostedStream.addTrack(t)); // preserve video!
-    return boostedStream;
-  } catch(e) {
-    console.log('Audio boost failed, using original:', e.message);
-    return stream;
-  }
+function startCallTimer() {
+  document.getElementById('call-status').textContent = 'Bağlandı';
+  const timerEl = document.getElementById('call-timer');
+  if (timerEl) timerEl.style.display = 'block';
+  clearInterval(callTimerInterval);
+  callSeconds = 0;
+  callTimerInterval = setInterval(() => {
+    callSeconds++;
+    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const s = String(callSeconds % 60).padStart(2, '0');
+    const te = document.getElementById('call-timer');
+    if (te) te.textContent = m + ':' + s;
+  }, 1000);
+  startBgKeepAlive();
 }
 
-let isVideoCall = false;
-let localVideoEl = null;
-let remoteVideoEl = null;
-
+// ─────────────────────────────
+// START CALL (caller side)
+// ─────────────────────────────
 async function startCall(withVideo = false) {
   if (!activeChat || activeChat.isGroup) return;
+  if (peerConnection) { showToast('Zaten bir arama var'); return; }
+  
   isVideoCall = withVideo;
-  const constraints = withVideo 
+  const constraints = withVideo
     ? { audio: true, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } }
     : { audio: true, video: false };
+
   try {
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (e) {
-    console.error('Mic error:', e.name, e.message);
+    console.error('getUserMedia error:', e.name);
     if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      showToast('Mikrofon izni reddedildi. Uygulama ayarlarından izin ver!', 4000);
+      showToast('Mikrofon/Kamera izni reddedildi!', 4000);
     } else if (e.name === 'NotFoundError') {
-      showToast('Mikrofon bulunamadı!', 3000);
+      showToast('Kamera/Mikrofon bulunamadı!', 3000);
     } else {
-      showToast('Mikrofon hatası: ' + e.message, 4000);
+      showToast('Donanım hatası: ' + e.message, 4000);
     }
     return;
   }
 
-  // Boost microphone volume
-  localStream = boostMicrophone(localStream);
-  
+  localStream = boostAudio(localStream);
+
+  // Show call screen
   setupCallAvatar(activeChat);
-  $('call-name').textContent = activeChat.name;
-  $('call-status').textContent = isVideoCall ? '📹 Aranıyor...' : '📞 Aranıyor...';
-  $('call-timer').style.display = 'none';
-  $('callScreen').classList.add('open');
-  
-  // Show video elements if video call
-  if (isVideoCall) setupVideoUI(localStream, null);
-  
+  document.getElementById('call-name').textContent = activeChat.name;
+  document.getElementById('call-status').textContent = withVideo ? 'Görüntülü Aranıyor...' : 'Sesli Aranıyor...';
+  document.getElementById('call-timer').style.display = 'none';
+  document.getElementById('callScreen').classList.add('open');
+  if (withVideo) setupVideoUI(localStream, null);
+
   isMuted = false;
-  $('mute-btn').classList.remove('on');
-  $('mute-btn').childNodes[0].textContent = '🎤';
-  $('spk-btn').classList.remove('on');
   clearInterval(callTimerInterval);
   callSeconds = 0;
   callRole = 'caller';
   callRoomId = 'calls/' + [me.uid, activeChat.uid].sort().join('_');
 
-  await dbSet(dbRef(rtdb, callRoomId), null);
+  // Clear any old call data
+  await dbSet(dbRef(rtdb, callRoomId), null).catch(() => {});
+  await new Promise(r => setTimeout(r, 200)); // small delay
 
   peerConnection = new RTCPeerConnection(ICE_CONFIG);
-  localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
+  // Add all tracks
+  localStream.getTracks().forEach(track => {
+    peerConnection.addTrack(track, localStream);
+  });
+
+  // Handle incoming remote tracks
   peerConnection.ontrack = ev => {
-    console.log('ontrack fired, streams:', ev.streams.length, 'kind:', ev.track.kind);
-    const remoteStream = ev.streams[0];
-    
-    // Always set audio
-    const audio = $('remote-audio');
-    audio.srcObject = remoteStream;
-    audio.play().catch(e => console.log('audio play:', e));
-    
-    if (isVideoCall) {
-      const remoteVid = document.getElementById('remote-video');
-      if (remoteVid) {
-        remoteVid.srcObject = remoteStream;
-        remoteVid.play().catch(e => console.log('video play:', e));
-        remoteVideoEl = remoteVid;
-      } else {
-        // Video element not created yet - create it now
-        setupVideoUI(localStream, remoteStream);
-      }
-    }
+    const stream = ev.streams[0] || new MediaStream([ev.track]);
+    const audio = document.getElementById('remote-audio');
+    if (audio) { audio.srcObject = stream; audio.play().catch(() => {}); }
+    if (isVideoCall) updateRemoteVideo(stream);
   };
 
+  // ICE candidates
+  const iceCandidatesBuffer = [];
   peerConnection.onicecandidate = ev => {
     if (ev.candidate) {
-      dbSet(dbRef(rtdb, callRoomId + '/callerCandidates/' + Date.now()), ev.candidate.toJSON()).catch(() => {});
+      const key = callRoomId + '/callerCandidates/' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      dbSet(dbRef(rtdb, key), ev.candidate.toJSON()).catch(() => {});
     }
   };
 
+  // Connection state
   peerConnection.onconnectionstatechange = () => {
-    if (peerConnection.connectionState === 'connected') startCallTimer();
-    if (['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) endCall();
+    const state = peerConnection?.connectionState;
+    console.log('connection state:', state);
+    if (state === 'connected') startCallTimer();
+    if (state === 'failed') {
+      showToast('Bağlantı başarısız. Tekrar deneyin.');
+      endCall();
+    }
+    // Note: 'disconnected' can be temporary, don't end call immediately
   };
 
-  const offer = await peerConnection.createOffer();
+  peerConnection.oniceconnectionstatechange = () => {
+    const s = peerConnection?.iceConnectionState;
+    console.log('ice state:', s);
+    if (s === 'disconnected') {
+      // Wait 8s before giving up (temporary disconnection)
+      setTimeout(() => {
+        if (peerConnection?.iceConnectionState === 'disconnected') endCall();
+      }, 8000);
+    }
+    if (s === 'failed') endCall();
+  };
+
+  // Create offer
+  const offer = await peerConnection.createOffer({
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: withVideo,
+  });
   await peerConnection.setLocalDescription(offer);
 
+  // Write to RTDB
   await dbSet(dbRef(rtdb, callRoomId), {
-    callerId: me.uid, callerName: me.name, callerColor: me.color,
-    callerInitials: me.initials, callerPhoto: me.photo || null,
+    callerId: me.uid,
+    callerName: me.name,
+    callerColor: me.color || '#00a884',
+    callerInitials: me.initials || me.name[0],
+    callerPhoto: me.photo || null,
     calleeId: activeChat.uid,
     offer: { type: offer.type, sdp: offer.sdp },
-    status: 'ringing', isVideo: isVideoCall, ts: Date.now()
+    status: 'ringing',
+    isVideo: withVideo,
+    ts: Date.now(),
   });
 
-  onValue(dbRef(rtdb, callRoomId + '/answer'), async snap => {
+  // Listen for answer
+  const answerUnsub = onValue(dbRef(rtdb, callRoomId + '/answer'), async snap => {
     const ans = snap.val();
-    if (ans && !peerConnection.currentRemoteDescription) {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(ans));
+    if (ans && peerConnection && !peerConnection.currentRemoteDescription) {
+      try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(ans));
+      } catch(e) { console.error('setRemoteDesc error:', e); }
     }
   });
 
+  // Listen for callee ICE candidates
   onValue(dbRef(rtdb, callRoomId + '/calleeCandidates'), snap => {
-    snap.forEach(c => {
-      const cand = c.val();
-      if (cand) peerConnection.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+    snap.forEach(childSnap => {
+      const cand = childSnap.val();
+      if (cand && peerConnection) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+      }
     });
   });
 
+  // Listen for status changes
   onValue(dbRef(rtdb, callRoomId + '/status'), snap => {
     const s = snap.val();
     if (s === 'rejected') { showToast('Arama reddedildi'); endCall(); }
     if (s === 'ended' && callRole === 'caller') endCall();
   });
 
+  // 45s timeout
   setTimeout(() => {
-    if ($('callScreen').classList.contains('open') && $('call-status').textContent === 'Aranıyor...') {
+    if (document.getElementById('callScreen').classList.contains('open') && callRole === 'caller' && callSeconds === 0) {
       showToast('Yanıt yok');
       endCall();
     }
   }, 45000);
 }
 
+// ─────────────────────────────
+// ACCEPT CALL (callee side)
+// ─────────────────────────────
 async function acceptCall() {
-  if (!callRoomId) return;
-  $('incomingCallUI').classList.remove('open');
+  if (!callRoomId) { showToast('Arama bulunamadı'); return; }
+  document.getElementById('incomingCallUI').classList.remove('open');
 
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch (e) {
-    console.error('Mic error:', e.name, e.message);
-    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      showToast('Mikrofon izni reddedildi. Uygulama ayarlarından izin ver!', 4000);
-    } else {
-      showToast('Mikrofon hatası: ' + e.message, 4000);
-    }
-    await dbSet(dbRef(rtdb, callRoomId + '/status'), 'rejected');
-    return;
-  }
-
+  // Get call data first
   const snap = await new Promise(res => onValue(dbRef(rtdb, callRoomId), res, { onlyOnce: true }));
   const d = snap.val();
-  if (!d || d.status === 'ended') { showToast('Arama sona erdi'); return; }
+  
+  if (!d) { showToast('Arama verisi bulunamadı'); callRoomId = null; return; }
+  if (d.status === 'ended' || d.status === 'rejected') { showToast('Arama sona erdi'); callRoomId = null; return; }
 
   isVideoCall = !!d.isVideo;
-  const constraints = isVideoCall 
-    ? { audio: true, video: { facingMode: 'user' } }
+
+  // Get media
+  const constraints = isVideoCall
+    ? { audio: true, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } }
     : { audio: true, video: false };
-  // Re-get stream with correct constraints
-  try { localStream.getTracks().forEach(t => t.stop()); } catch(e) {}
-  localStream = await navigator.mediaDevices.getUserMedia(constraints).catch(() => localStream);
-  localStream = boostMicrophone(localStream);
-  const callerUser = { uid: d.callerId, name: d.callerName, color: d.callerColor, initials: d.callerInitials, photo: d.callerPhoto };
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (e) {
+    console.error('getUserMedia error in accept:', e.name);
+    // Try audio only as fallback
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      isVideoCall = false;
+    } catch (e2) {
+      showToast('Mikrofon erişimi reddedildi!', 4000);
+      await dbSet(dbRef(rtdb, callRoomId + '/status'), 'rejected').catch(() => {});
+      callRoomId = null;
+      return;
+    }
+  }
+
+  localStream = boostAudio(localStream);
+
+  // Show call screen
+  const callerUser = {
+    uid: d.callerId,
+    name: d.callerName || '?',
+    color: d.callerColor || '#00a884',
+    initials: d.callerInitials || '?',
+    photo: d.callerPhoto || null,
+  };
   setupCallAvatar(callerUser);
-  $('call-name').textContent = callerUser.name;
-  $('call-status').textContent = isVideoCall ? 'Bağlanıyor... 📹' : 'Bağlanıyor...';
+  document.getElementById('call-name').textContent = callerUser.name;
+  document.getElementById('call-status').textContent = 'Bağlanıyor...';
+  document.getElementById('call-timer').style.display = 'none';
+  document.getElementById('callScreen').classList.add('open');
   if (isVideoCall) setupVideoUI(localStream, null);
-  $('call-timer').style.display = 'none';
-  $('callScreen').classList.add('open');
+
   isMuted = false;
-  $('mute-btn').classList.remove('on');
-  $('mute-btn').childNodes[0].textContent = '🎤';
-  callRole = 'callee';
   clearInterval(callTimerInterval);
   callSeconds = 0;
+  callRole = 'callee';
 
   peerConnection = new RTCPeerConnection(ICE_CONFIG);
-  localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
+  // Add local tracks
+  localStream.getTracks().forEach(track => {
+    peerConnection.addTrack(track, localStream);
+  });
+
+  // Handle remote tracks
   peerConnection.ontrack = ev => {
-    console.log('ontrack fired, streams:', ev.streams.length, 'kind:', ev.track.kind);
-    const remoteStream = ev.streams[0];
-    
-    // Always set audio
-    const audio = $('remote-audio');
-    audio.srcObject = remoteStream;
-    audio.play().catch(e => console.log('audio play:', e));
-    
-    if (isVideoCall) {
-      const remoteVid = document.getElementById('remote-video');
-      if (remoteVid) {
-        remoteVid.srcObject = remoteStream;
-        remoteVid.play().catch(e => console.log('video play:', e));
-        remoteVideoEl = remoteVid;
-      } else {
-        // Video element not created yet - create it now
-        setupVideoUI(localStream, remoteStream);
-      }
-    }
+    const stream = ev.streams[0] || new MediaStream([ev.track]);
+    const audio = document.getElementById('remote-audio');
+    if (audio) { audio.srcObject = stream; audio.play().catch(() => {}); }
+    if (isVideoCall) updateRemoteVideo(stream);
   };
 
+  // ICE candidates
   peerConnection.onicecandidate = ev => {
     if (ev.candidate) {
-      dbSet(dbRef(rtdb, callRoomId + '/calleeCandidates/' + Date.now()), ev.candidate.toJSON()).catch(() => {});
+      const key = callRoomId + '/calleeCandidates/' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      dbSet(dbRef(rtdb, key), ev.candidate.toJSON()).catch(() => {});
     }
   };
 
   peerConnection.onconnectionstatechange = () => {
-    if (peerConnection.connectionState === 'connected') startCallTimer();
-    if (['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) endCall();
+    const state = peerConnection?.connectionState;
+    console.log('callee connection state:', state);
+    if (state === 'connected') startCallTimer();
+    if (state === 'failed') { showToast('Bağlantı başarısız'); endCall(); }
   };
 
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(d.offer));
+  peerConnection.oniceconnectionstatechange = () => {
+    const s = peerConnection?.iceConnectionState;
+    console.log('callee ice state:', s);
+    if (s === 'disconnected') {
+      setTimeout(() => {
+        if (peerConnection?.iceConnectionState === 'disconnected') endCall();
+      }, 8000);
+    }
+    if (s === 'failed') endCall();
+  };
+
+  // Set remote description from offer
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(d.offer));
+  } catch(e) {
+    console.error('setRemoteDescription failed:', e);
+    showToast('Bağlantı kurulamadı: ' + e.message);
+    endCall();
+    return;
+  }
+
+  // Create and send answer
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
   await dbSet(dbRef(rtdb, callRoomId + '/answer'), { type: answer.type, sdp: answer.sdp });
   await dbSet(dbRef(rtdb, callRoomId + '/status'), 'accepted');
 
+  // Listen for caller ICE candidates
   onValue(dbRef(rtdb, callRoomId + '/callerCandidates'), snap => {
-    snap.forEach(c => {
-      const cand = c.val();
-      if (cand) peerConnection.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+    snap.forEach(childSnap => {
+      const cand = childSnap.val();
+      if (cand && peerConnection) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+      }
     });
   });
 
+  // Listen for call end
   onValue(dbRef(rtdb, callRoomId + '/status'), snap => {
     if (snap.val() === 'ended' && callRole === 'callee') endCall();
   });
 }
 
+// ─────────────────────────────
+// REJECT CALL
+// ─────────────────────────────
 function rejectCall() {
-  $('incomingCallUI').classList.remove('open');
-  if (callRoomId) dbSet(dbRef(rtdb, callRoomId + '/status'), 'rejected').catch(() => {});
-  callRoomId = null;
+  document.getElementById('incomingCallUI').classList.remove('open');
+  if (callRoomId) {
+    dbSet(dbRef(rtdb, callRoomId + '/status'), 'rejected').catch(() => {});
+    callRoomId = null;
+  }
 }
 
+// ─────────────────────────────
+// END CALL
+// ─────────────────────────────
 function endCall() {
-  $('callScreen').classList.remove('open');
-  $('incomingCallUI').classList.remove('open');
+  if (!peerConnection && !callIsActive && !callRoomId) return; // Already ended
+  
+  document.getElementById('callScreen').classList.remove('open');
+  document.getElementById('incomingCallUI').classList.remove('open');
+  
   clearInterval(callTimerInterval);
-  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-  if (peerConnection) { peerConnection.close(); peerConnection = null; }
-  const audio = $('remote-audio');
-  audio.srcObject = null;
-  // Cleanup video
-  if (localVideoEl) { localVideoEl.srcObject = null; localVideoEl = null; }
-  if (remoteVideoEl) { remoteVideoEl.srcObject = null; remoteVideoEl = null; }
+  callSeconds = 0;
+  
+  // Stop all media tracks
+  if (localStream) {
+    localStream.getTracks().forEach(t => { try { t.stop(); } catch(e) {} });
+    localStream = null;
+  }
+  
+  // Close peer connection
+  if (peerConnection) {
+    try { peerConnection.close(); } catch(e) {}
+    peerConnection = null;
+  }
+  
+  // Clear audio
+  const audio = document.getElementById('remote-audio');
+  if (audio) { try { audio.srcObject = null; } catch(e) {} }
+  
+  // Cleanup video elements
+  if (localVideoEl) { try { localVideoEl.srcObject = null; } catch(e) {} localVideoEl = null; }
+  if (remoteVideoEl) { try { remoteVideoEl.srcObject = null; } catch(e) {} remoteVideoEl = null; }
   document.getElementById('call-video-wrap')?.remove();
+  
+  // Close audio context
   if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; gainNode = null; }
-  isVideoCall = false;
-  // Stop background keepalive
-  stopBgCallKeepAlive();
+  
+  // Signal end to other party
   if (callRoomId) {
     dbSet(dbRef(rtdb, callRoomId + '/status'), 'ended').catch(() => {});
     setTimeout(() => dbRemove(dbRef(rtdb, callRoomId)).catch(() => {}), 3000);
   }
+  
+  // Log call in chat
   if (callSeconds > 0 && activeChat && !activeChat.isGroup) {
     const dur = callSeconds >= 60
       ? Math.floor(callSeconds / 60) + ' dk ' + (callSeconds % 60) + ' sn'
       : callSeconds + ' sn';
-    sendMessageData({ type: 'call', text: 'Sesli Arama · ' + dur }).catch(() => {});
+    sendMessageData({ type: 'call', text: (isVideoCall ? 'Görüntülü' : 'Sesli') + ' Arama ' + dur }).catch(() => {});
   }
+  
+  const wasVideo = isVideoCall;
+  isVideoCall = false;
   callRoomId = null;
   callRole = null;
-  callSeconds = 0;
+  
+  // Restore call screen elements visibility
+  document.querySelectorAll('.call-avatar,.call-name,.call-status').forEach(el => {
+    el.style.display = '';
+  });
+  
+  stopBgKeepAlive();
+  
+  // Stop screen share if active
+  if (screenSharing) stopScreenShare();
 }
 
-function startCallTimer() {
-  $('call-status').textContent = 'Bağlandı ✓';
-  $('call-timer').style.display = 'block';
-  callTimerInterval = setInterval(() => {
-    callSeconds++;
-    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
-    const s = String(callSeconds % 60).padStart(2, '0');
-    $('call-timer').textContent = m + ':' + s;
-  }, 1000);
-  // Start background keepalive
-  startBgCallKeepAlive();
+// ─────────────────────────────
+// SCREEN SHARE during call
+// ─────────────────────────────
+let screenStream = null;
+let screenSharing = false;
+
+async function startScreenShare() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    showToast('Bu cihaz ekran paylaşımını desteklemiyor');
+    return;
+  }
+  if (screenSharing) { stopScreenShare(); return; }
+  
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'always', frameRate: { ideal: 15, max: 30 } },
+      audio: false,
+    });
+    screenSharing = true;
+    
+    const screenTrack = screenStream.getVideoTracks()[0];
+    
+    if (peerConnection && callIsActive) {
+      // Replace video track in call
+      const senders = peerConnection.getSenders();
+      const vs = senders.find(s => s.track?.kind === 'video');
+      if (vs) {
+        await vs.replaceTrack(screenTrack);
+      } else {
+        peerConnection.addTrack(screenTrack, screenStream);
+      }
+      // Show screen locally
+      if (localVideoEl) {
+        localVideoEl.srcObject = new MediaStream([screenTrack]);
+        localVideoEl.play().catch(() => {});
+      }
+      showToast('Ekran paylaşımı aktif');
+    } else if (activeChat) {
+      // Not in call - capture and send as image
+      const vid = document.createElement('video');
+      vid.srcObject = screenStream;
+      vid.autoplay = true;
+      vid.muted = true;
+      vid.playsInline = true;
+      await new Promise(r => { vid.onloadedmetadata = r; });
+      await new Promise(r => setTimeout(r, 400));
+      const cv = document.createElement('canvas');
+      cv.width = Math.min(vid.videoWidth, 1280);
+      cv.height = Math.min(vid.videoHeight, 720);
+      cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height);
+      const dataUrl = cv.toDataURL('image/jpeg', 0.85);
+      try {
+        const ref = storageRef(storage, `screenshots/${me.uid}_${Date.now()}.jpg`);
+        await uploadString(ref, dataUrl, 'data_url');
+        const url = await getDownloadURL(ref);
+        await sendMessageData({ type: 'image', url, fileName: 'ekran.jpg' });
+      } catch(e) {
+        await sendMessageData({ type: 'image', url: dataUrl, fileName: 'ekran.jpg' });
+      }
+      showToast('Ekran görüntüsü gönderildi');
+      stopScreenShare();
+      return;
+    }
+    
+    const ind = document.getElementById('screenShareIndicator');
+    if (ind) ind.classList.add('show');
+    
+    screenTrack.addEventListener('ended', () => stopScreenShare());
+    
+  } catch(e) {
+    screenSharing = false;
+    if (e.name !== 'NotAllowedError') showToast('Ekran paylaşımı hatası: ' + e.message);
+  }
+}
+
+async function stopScreenShare() {
+  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+  screenSharing = false;
+  
+  const ind = document.getElementById('screenShareIndicator');
+  if (ind) ind.classList.remove('show');
+  
+  // Restore camera if in video call
+  if (peerConnection && callIsActive && isVideoCall && localStream) {
+    const camTrack = localStream.getVideoTracks()[0];
+    if (camTrack) {
+      const vs = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+      if (vs) await vs.replaceTrack(camTrack).catch(() => {});
+      if (localVideoEl) {
+        localVideoEl.srcObject = new MediaStream([camTrack]);
+        localVideoEl.play().catch(() => {});
+      }
+    }
+  }
+  showToast('Ekran paylaşımı durduruldu');
+}
+
+// ─────────────────────────────
+// LISTEN FOR INCOMING CALLS
+// ─────────────────────────────
+// Show speaker button only on mobile
+function updateSpeakerBtnVisibility() {
+  const spk = document.getElementById('spk-btn');
+  if (!spk) return;
+  // Show on mobile/Android (has touch), hide on desktop
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  spk.style.display = isMobile ? 'flex' : 'none';
 }
 
 function listenForIncomingCalls() {
@@ -3306,798 +3553,56 @@ function listenForIncomingCalls() {
   onValue(dbRef(rtdb, 'calls'), snap => {
     snap.forEach(callSnap => {
       const d = callSnap.val();
-      if (!d || d.calleeId !== me.uid || d.status !== 'ringing') return;
-      if ($('callScreen').classList.contains('open')) return;
+      if (!d) return;
+      if (d.calleeId !== me.uid) return;
+      if (d.status !== 'ringing') return;
+      if (document.getElementById('callScreen').classList.contains('open')) return;
+      if (document.getElementById('incomingCallUI').classList.contains('open')) return;
+      
       callRoomId = 'calls/' + callSnap.key;
-      const incAv = $('incoming-avatar');
-      if (d.callerPhoto) {
-        incAv.innerHTML = `<img src="${d.callerPhoto}" style="width:100%;height:100%;border-radius:50%;">`;
-      } else {
-        incAv.textContent = d.callerInitials || '?';
-        incAv.style.background = (d.callerColor || '#00a884') + '22';
-        incAv.style.color = d.callerColor || '#00a884';
-      }
-      $('incoming-caller-name').textContent = d.callerName || '?';
-      // Show video icon if video call
-      const incLabel = document.querySelector('.incoming-label');
-      if (incLabel) incLabel.textContent = d.isVideo ? 'Gelen Görüntülü Arama 📹' : 'Gelen Sesli Arama 📞';
       isVideoCall = !!d.isVideo;
-      $('incomingCallUI').classList.add('open');
-      if (savedSettings.notif !== false && 'Notification' in window && Notification.permission === 'granted') {
-        try { new Notification('🐦 Kiwi — Gelen Arama', { body: (d.callerName || '?') + ' sizi arıyor 📞' }); } catch (e) {}
-      }
-    });
-  });
-}
-
-/* ═══════════ ADMIN PANEL ═══════════ */
-async function openAdminPanel() {
-  if (!isAdminUser(me.name)) { showToast('Erişim reddedildi'); return; }
-  const pw = prompt('Yönetici şifresi:');
-  if (pw !== ADMIN_PASS) { showToast('Yanlış şifre'); return; }
-  $('settings-modal').classList.remove('open');
-  await loadAdminData();
-  $('adminPanel').classList.add('open');
-}
-
-async function loadAdminData() {
-  try {
-    const snap = await getDocs(collection(db, 'users'));
-    const allDocs = [];
-    snap.forEach(d => allDocs.push({ uid: d.id, ...d.data() }));
-    const users = allDocs.filter(u => !u.isGroup);
-    const groups = allDocs.filter(u => u.isGroup);
-
-    $('admin-stats').innerHTML = `
-      <div class="stat-card"><div class="stat-number">${users.length}</div><div class="stat-label">Kullanıcı</div></div>
-      <div class="stat-card"><div class="stat-number">${users.filter(u => u.online).length}</div><div class="stat-label">Çevrimiçi</div></div>
-      <div class="stat-card"><div class="stat-number">${users.filter(u => u.banned).length}</div><div class="stat-label">Banlı</div></div>
-      <div class="stat-card"><div class="stat-number">${groups.length}</div><div class="stat-label">Grup</div></div>`;
-
-    const searchQ = $('admin-user-search').value.toLowerCase();
-    const userList = $('admin-user-list');
-    userList.innerHTML = '';
-    users.filter(u => !searchQ || u.name?.toLowerCase().includes(searchQ)).forEach(u => {
-      const row = document.createElement('div');
-      row.className = 'admin-user-row';
-
-      const avEl = buildAvatar(u, 38);
-      const info = document.createElement('div');
-      info.className = 'admin-user-info';
-      info.innerHTML = `<div class="admin-user-name">${esc(u.name)}${u.uid === me.uid ? ' (Sen)' : ''}${u.banned ? '<span class="ban-tag">BANDI</span>' : ''}</div><div class="admin-user-meta">${esc(u.bio || '')} · ${u.online ? '🟢 Çevrimiçi' : '⚫ ' + fmtRelTime(u.lastSeen)}</div>`;
-
-      const actions = document.createElement('div');
-      actions.className = 'admin-actions';
-
-      if (u.uid !== me.uid) {
-        const banBtn = document.createElement('button');
-        banBtn.className = 'admin-btn ' + (u.banned ? 'unban' : 'ban');
-        banBtn.textContent = u.banned ? 'Ban Kaldır' : 'Banla';
-        banBtn.addEventListener('click', async () => {
-          if (u.banned) {
-            await updateDoc(doc(db, 'users', u.uid), { banned: false });
-          } else {
-            if (!confirm(u.name + ' banlanacak?')) return;
-            await updateDoc(doc(db, 'users', u.uid), { banned: true, online: false });
-          }
-          showToast(u.banned ? 'Ban kaldırıldı ✅' : 'Banlandi ✅');
-          loadAdminData();
-        });
-
-        const msgBtn = document.createElement('button');
-        msgBtn.className = 'admin-btn msg';
-        msgBtn.textContent = 'Mesaj';
-        msgBtn.addEventListener('click', () => {
-          $('adminPanel').classList.remove('open');
-          if (window.innerWidth <= 768) $('sidebar').classList.remove('open');
-          openChat(u);
-        });
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'admin-btn del';
-        delBtn.textContent = 'Sil';
-        delBtn.addEventListener('click', async () => {
-          if (!confirm(u.name + ' kalıcı silinecek?')) return;
-          await deleteDoc(doc(db, 'users', u.uid));
-          showToast('Silindi ✅');
-          loadAdminData();
-        });
-
-        actions.appendChild(banBtn);
-        actions.appendChild(msgBtn);
-        actions.appendChild(delBtn);
-      } else {
-        actions.innerHTML = '<span style="color:var(--dim);font-size:12px;">(Sen)</span>';
-      }
-
-      row.appendChild(avEl);
-      row.appendChild(info);
-      row.appendChild(actions);
-      userList.appendChild(row);
-    });
-
-    // Search in admin
-    $('admin-user-search').oninput = loadAdminData;
-
-    // Groups
-    const groupList = $('admin-group-list');
-    groupList.innerHTML = '';
-    if (!groups.length) {
-      groupList.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:14px;">Grup yok</div>';
-    } else {
-      groups.forEach(g => {
-        const row = document.createElement('div');
-        row.className = 'admin-user-row';
-        row.appendChild(buildAvatar({ ...g, isGroup: true }, 38));
-        const info = document.createElement('div');
-        info.className = 'admin-user-info';
-        info.innerHTML = `<div class="admin-user-name">${esc(g.name)}</div><div class="admin-user-meta">${g.members?.length || 0} üye · ${esc(g.desc || '')}</div>`;
-        const delBtn = document.createElement('button');
-        delBtn.className = 'admin-btn del';
-        delBtn.textContent = 'Sil';
-        delBtn.addEventListener('click', async () => {
-          if (!confirm('Grup silinecek?')) return;
-          await deleteDoc(doc(db, 'users', g.uid)).catch(() => {});
-          await deleteDoc(doc(db, 'groups', g.uid)).catch(() => {});
-          showToast('Grup silindi');
-          loadAdminData();
-        });
-        const acts = document.createElement('div');
-        acts.className = 'admin-actions';
-        acts.appendChild(delBtn);
-        row.appendChild(info);
-        row.appendChild(acts);
-        groupList.appendChild(row);
-      });
-    }
-
-    // Broadcast
-    $('broadcast-btn').onclick = async () => {
-      const msg = $('broadcast-text').value.trim();
-      if (!msg) { showToast('Mesaj yaz'); return; }
-      if (!confirm(`${users.length} kullanıcıya mesaj gönderilecek?`)) return;
-      let sent = 0;
-      for (const u of users) {
-        if (u.uid === me.uid) continue;
-        try {
-          const path = ['chats', dmChatId(me.uid, u.uid), 'messages'];
-          await addDoc(collection(db, ...path), {
-            from: me.uid, fromName: '🛡️ Yönetici',
-            type: 'text', text: msg,
-            status: 'sent', ts: serverTimestamp()
-          });
-          sent++;
-        } catch (e) {}
-      }
-      showToast(`${sent} kullanıcıya gönderildi 📢`);
-      $('broadcast-text').value = '';
-    };
-
-  } catch (e) { showToast('Yükleme hatası: ' + e.message); console.error(e); }
-}
-
-
-/* ═══ EXTRA FEATURES ═══ */
-
-// ── STATUS / BIO UPDATE ──
-function updateUserStatus(status) {
-  if (!me) return;
-  updateDoc(doc(db, 'users', me.uid), { bio: status }).catch(() => {});
-  me.bio = status;
-  showToast('Durum güncellendi ✅');
-}
-
-// ── MESSAGE SEARCH ──
-let msgSearchActive = false;
-function openMsgSearch() {
-  const existing = document.getElementById('msg-search-bar');
-  if (existing) { existing.remove(); msgSearchActive = false; return; }
-  msgSearchActive = true;
-  const bar = document.createElement('div');
-  bar.id = 'msg-search-bar';
-  bar.style.cssText = 'padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;';
-  bar.innerHTML = `<input id="msg-search-input" type="text" placeholder="Mesajlarda ara..." style="flex:1;background:var(--inp);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;">
-  <button onclick="document.getElementById('msg-search-bar').remove()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:18px;padding:4px;">✕</button>`;
-  const chatHeader = document.getElementById('chat-header');
-  chatHeader.insertAdjacentElement('afterend', bar);
-  document.getElementById('msg-search-input').focus();
-  document.getElementById('msg-search-input').addEventListener('input', e => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll('.bubble').forEach(bub => {
-      const txt = bub.textContent.toLowerCase();
-      bub.closest('.msg-row').style.opacity = (!q || txt.includes(q)) ? '1' : '0.2';
-    });
-  });
-}
-
-// ── SCROLL TO BOTTOM ──
-function addScrollToBottom() {
-  const msgs = document.getElementById('messages');
-  if (!msgs) return;
-  let btn = document.getElementById('scroll-to-bottom-btn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'scroll-to-bottom-btn';
-    btn.innerHTML = '↓';
-    btn.style.cssText = 'position:absolute;bottom:80px;right:16px;width:40px;height:40px;border-radius:50%;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:10;transition:.2s;';
-    btn.onclick = () => { msgs.scrollTop = msgs.scrollHeight; };
-    const chatArea = document.getElementById('chat-area');
-    if (chatArea) { chatArea.style.position = 'relative'; chatArea.appendChild(btn); }
-  }
-  msgs.addEventListener('scroll', () => {
-    const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
-    btn.style.display = distFromBottom > 200 ? 'flex' : 'none';
-  });
-}
-
-// ── ONLINE COUNT IN SIDEBAR ──
-function updateOnlineCount() {
-  const onlineCount = allUsers.filter(u => u.online && !u.isGroup).length;
-  const existing = document.getElementById('online-count-badge');
-  if (!existing) {
-    const badge = document.createElement('div');
-    badge.id = 'online-count-badge';
-    badge.style.cssText = 'font-size:11px;color:var(--acc);padding:2px 10px 6px;flex-shrink:0;';
-    badge.textContent = onlineCount + ' kişi çevrimiçi';
-    const tabRow = document.querySelector('.tab-row');
-    if (tabRow) tabRow.insertAdjacentElement('afterend', badge);
-  } else {
-    existing.textContent = onlineCount + ' kişi çevrimiçi';
-  }
-}
-
-// ── NIGHT/DAY AUTO THEME ──
-function autoThemeByTime() {
-  if (savedSettings.theme) return; // don't override manual theme
-  const hour = new Date().getHours();
-  if (hour >= 8 && hour < 20) applyTheme('dark'); // always dark for WA style
-}
-
-// ── KEYBOARD SHORTCUT ──
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    // Close any open modal
-    ['settings-modal','new-chat-modal','new-group-modal','starred-modal'].forEach(id => {
-      document.getElementById(id)?.classList.remove('open');
-    });
-    document.getElementById('ctx-menu')?.classList.remove('open');
-    document.getElementById('reaction-picker')?.classList.remove('open');
-    document.getElementById('emoji-panel')?.classList.remove('open');
-    document.getElementById('lightbox')?.classList.remove('open');
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && document.getElementById('chat-area')?.style.display !== 'none') {
-    e.preventDefault();
-    openMsgSearch();
-  }
-});
-
-// ── SOUND NOTIFICATION ──
-function playNotifSound() {
-  if (savedSettings.notif === false) return;
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.3);
-  } catch(e) {}
-}
-
-// ── UNREAD COUNTER in tab title ──
-function updateTabTitle() {
-  const total = Object.values(unreadMap).reduce((a, b) => a + b, 0);
-  document.title = total > 0 ? `(${total}) Kiwi Sohbet` : 'Kiwi Sohbet';
-}
-
-// ── DOUBLE TAP REACT ──
-function setupDoubleTapReact(bubble, msg, peer) {
-  let lastTap = 0;
-  bubble.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTap < 300) {
-      e.preventDefault();
-      // Quick heart reaction on double tap
-      const path = peer.isGroup
-        ? ['groups', peer.uid, 'messages']
-        : ['chats', dmChatId(me.uid, peer.uid), 'messages'];
-      const mRef = doc(db, ...path, msg.id);
-      const cur = msg.reactions || {};
-      if (cur[me.uid] === '❤️') {
-        const upd = {...cur}; delete upd[me.uid];
-        updateDoc(mRef, { reactions: upd }).catch(() => {});
-      } else {
-        updateDoc(mRef, { reactions: {...cur, [me.uid]: '❤️'} }).catch(() => {});
-      }
-      // Show heart animation
-      const heart = document.createElement('div');
-      heart.textContent = '❤️';
-      heart.style.cssText = 'position:fixed;font-size:32px;pointer-events:none;z-index:999;animation:heartPop .6s forwards;';
-      const t = e.changedTouches[0];
-      heart.style.left = (t.clientX - 16) + 'px';
-      heart.style.top = (t.clientY - 16) + 'px';
-      document.body.appendChild(heart);
-      setTimeout(() => heart.remove(), 600);
-    }
-    lastTap = now;
-  });
-}
-
-// Add heart pop animation
-const heartStyle = document.createElement('style');
-heartStyle.textContent = `
-@keyframes heartPop {
-  0% { transform: scale(0); opacity: 1; }
-  50% { transform: scale(1.4); opacity: 1; }
-  100% { transform: scale(1) translateY(-40px); opacity: 0; }
-}
-#scroll-to-bottom-btn:hover { background: var(--inp) !important; transform: scale(1.1); }
-.msg-row { animation: msgIn .18s ease; }
-@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.citem { animation: none; }
-/* Better scrollbar for webkit */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-/* Unread badge pulse */
-.ci-badge { animation: badgePulse 2s infinite; }
-@keyframes badgePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,168,132,.4); } 50% { box-shadow: 0 0 0 4px rgba(0,168,132,0); } }
-/* Smooth bubble appearance */
-.bubble { transition: background .2s; }
-/* Swipe to reply indicator */
-.msg-row { transition: transform .15s; }
-/* Better focus styles */
-input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px rgba(0,168,132,.2); }
-/* Disabled state */
-button:disabled { opacity: .5; cursor: not-allowed; }
-`;
-document.head.appendChild(heartStyle);
-
-// ── SWIPE TO REPLY (mobile) ──
-function setupSwipeReply(row, msg, peer) {
-  let startX = 0, swiping = false;
-  row.addEventListener('touchstart', e => {
-    startX = e.touches[0].clientX;
-    swiping = true;
-  }, { passive: true });
-  row.addEventListener('touchmove', e => {
-    if (!swiping) return;
-    const dx = e.touches[0].clientX - startX;
-    const isOut = msg.from === me.uid;
-    if (isOut && dx < -20) row.style.transform = `translateX(${Math.max(dx, -60)}px)`;
-    else if (!isOut && dx > 20) row.style.transform = `translateX(${Math.min(dx, 60)}px)`;
-  }, { passive: true });
-  row.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - startX;
-    row.style.transform = '';
-    swiping = false;
-    if (Math.abs(dx) > 50) {
-      // Trigger reply
-      replyTo = { ...msg, fromName: msg.fromName || (msg.from === me.uid ? me.name : peer.name) };
-      document.getElementById('reply-bar-name').textContent = replyTo.fromName;
-      document.getElementById('reply-bar-text').textContent = makeMsgPreview(replyTo);
-      document.getElementById('reply-bar').classList.add('show');
-      document.getElementById('msg-input').focus();
-    }
-  }, { passive: true });
-}
-
-// ── LAST SEEN LIVE UPDATE ──
-setInterval(() => {
-  // Re-render sidebar timestamps every minute
-  renderSidebar();
-  updateTabTitle();
-}, 60000);
-
-// ── ONLINE STATUS INDICATOR in header ──
-setInterval(() => {
-  if (me) updateDoc(doc(db, 'users', me.uid), { online: true, lastSeen: serverTimestamp() }).catch(() => {});
-}, 30000);
-
-// Call the extra setups after initApp
-// Extra features called after renderMessages
-// (renderMessages itself calls these inline now - no duplicate needed)
-
-// Play sound on new incoming messages
-const _origOnSnapshot = onSnapshot;
-// Track last msg count to detect new messages
-let lastMsgCounts = {};
-
-// Notify on new message
-function notifyNewMessage(fromName, text) {
-  if (document.hasFocus()) return;
-  playNotifSound();
-  if ('Notification' in window && Notification.permission === 'granted' && savedSettings.notif !== false) {
-    try { new Notification('🐦 ' + fromName, { body: text, icon: '' }); } catch(e) {}
-  }
-}
-
-// ── PROFILE VIEW on avatar click ──
-function showProfileModal(user) {
-  const existing = document.getElementById('profile-modal');
-  if (existing) existing.remove();
-  const modal = document.createElement('div');
-  modal.id = 'profile-modal';
-  modal.className = 'modal-overlay open';
-  modal.innerHTML = `
-    <div class="modal-box" style="align-items:center;gap:16px;text-align:center;">
-      <div class="modal-drag"></div>
-      <div style="width:90px;height:90px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;background:${user.color||'#00a884'}22;color:${user.color||'#00a884'};">
-        ${user.photo ? `<img src="${user.photo}" style="width:100%;height:100%;object-fit:cover;">` : (user.initials || user.name?.[0] || '?')}
-      </div>
-      <div>
-        <div style="font-size:18px;font-weight:700;">${esc(user.name)}</div>
-        ${user.bio ? `<div style="font-size:13px;color:var(--dim);margin-top:4px;">${esc(user.bio)}</div>` : ''}
-        <div style="font-size:12px;color:${user.online ? 'var(--acc)' : 'var(--dim)'};margin-top:6px;">${user.online ? '● Çevrimiçi' : 'Son görülme: ' + fmtRelTime(user.lastSeen)}</div>
-      </div>
-      <div class="modal-row" style="width:100%;">
-        <button class="modal-btn primary" onclick="document.getElementById('profile-modal').remove();if(window.innerWidth<=768)document.getElementById('sidebar').classList.remove('open');openChat(${JSON.stringify(user).replace(/"/g,'&quot;')})">💬 Mesaj Gönder</button>
-        <button class="modal-btn secondary" onclick="document.getElementById('profile-modal').remove()">Kapat</button>
-      </div>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
-}
-
-// ── PINNED MESSAGES (simple) ──
-let pinnedMsg = null;
-function pinMessage(msg) {
-  pinnedMsg = msg;
-  localStorage.setItem('kiwi_pinned_' + activeChat?.uid, JSON.stringify(msg));
-  showToast('Mesaj sabitlendi 📌');
-  renderPinnedBar();
-}
-function renderPinnedBar() {
-  const existing = document.getElementById('pinned-bar');
-  if (existing) existing.remove();
-  if (!pinnedMsg || !activeChat) return;
-  const bar = document.createElement('div');
-  bar.id = 'pinned-bar';
-  bar.style.cssText = 'padding:6px 14px;background:rgba(0,168,132,.08);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;';
-  bar.innerHTML = `<span style="font-size:14px;">📌</span><div style="flex:1;min-width:0;"><div style="font-size:11px;color:var(--acc);font-weight:600;">Sabitlenmiş Mesaj</div><div style="font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(makeMsgPreview(pinnedMsg))}</div></div><button onclick="pinnedMsg=null;document.getElementById('pinned-bar')?.remove()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px;">✕</button>`;
-  const msgs = document.getElementById('messages');
-  msgs?.insertAdjacentElement('beforebegin', bar);
-}
-
-// Add pin to context menu
-const ctxSep = document.querySelector('.ctx-sep');
-if (ctxSep) {
-  const pinItem = document.createElement('div');
-  pinItem.className = 'ctx-item';
-  pinItem.id = 'ctx-pin';
-  pinItem.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>Sabitle';
-  pinItem.addEventListener('click', () => { if (ctxMsg) pinMessage(ctxMsg); });
-  ctxSep.insertAdjacentElement('beforebegin', pinItem);
-}
-
-
-/* ═══════════════════════════════════════
-   EXTRA FEATURES - GROUP SEARCH, SCREEN SHARE, BG CALL
-═══════════════════════════════════════ */
-
-// ── GROUP SEARCH ──
-function openGroupSearch() {
-  const existing = document.getElementById('group-search-modal');
-  if (existing) { existing.remove(); return; }
-  
-  const overlay = document.createElement('div');
-  overlay.id = 'group-search-modal';
-  overlay.className = 'modal-overlay open';
-  overlay.innerHTML = `
-    <div class="modal-box">
-      <div class="modal-drag"></div>
-      <div class="modal-title">
-        <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:inline-block;vertical-align:middle;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Gruplarda Ara
-      </div>
-      <div class="search-box">
-        <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex-shrink:0;fill:none;stroke:var(--dim);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="group-search-input" placeholder="Grup adı ara..." style="background:none;border:none;outline:none;color:var(--text);flex:1;padding:9px 0;font-size:13px;font-family:inherit;">
-      </div>
-      <div id="group-search-results" style="display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;"></div>
-      <button class="modal-btn secondary full" id="group-search-close">Kapat</button>
-    </div>`;
-  
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  
-  document.getElementById('group-search-close').addEventListener('click', () => overlay.remove());
-  
-  const input = document.getElementById('group-search-input');
-  const results = document.getElementById('group-search-results');
-  
-  function renderGroupResults(q) {
-    results.innerHTML = '';
-    const groups = allUsers.filter(u => u.isGroup && (!q || u.name?.toLowerCase().includes(q.toLowerCase())));
-    if (!groups.length) {
-      results.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:12px;text-align:center;">Grup bulunamadı</div>';
-      return;
-    }
-    groups.forEach(g => {
-      const item = document.createElement('div');
-      item.className = 'citem';
-      const av = buildAvatar({...g, isGroup:true}, 40);
-      const body = document.createElement('div');
-      body.className = 'ci-body';
-      body.innerHTML = `<div class="ci-row1"><div class="ci-name">${esc(g.name)}</div></div><div class="ci-row2"><div class="ci-last">${(g.members||[]).length} üye · ${esc(g.desc||'')}</div></div>`;
-      item.appendChild(av); item.appendChild(body);
-      item.addEventListener('click', () => {
-        overlay.remove();
-        if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
-        openChat(g);
-      });
-      results.appendChild(item);
-    });
-  }
-  
-  renderGroupResults('');
-  input.addEventListener('input', () => renderGroupResults(input.value));
-  input.focus();
-}
-
-// ── SCREEN SHARE ──
-let screenStream = null;
-let screenSharing = false;
-
-async function startScreenShare() {
-  if (!navigator.mediaDevices?.getDisplayMedia) {
-    showToast('Ekran paylaşımı bu cihazda desteklenmiyor');
-    return;
-  }
-  
-  if (screenSharing) {
-    stopScreenShare();
-    return;
-  }
-  
-  try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'always', frameRate: { ideal: 15 } },
-      audio: true
-    });
-    screenSharing = true;
-    showToast('Ekran paylaşımı başladı', 3000);
-    const ind = document.getElementById('screenShareIndicator');
-    if (ind) ind.classList.add('show');
-    
-    const screenVideoTrack = screenStream.getVideoTracks()[0];
-    
-    // If in a call, replace video track with screen track
-    if (peerConnection && callIsActive) {
-      const senders = peerConnection.getSenders();
-      const videoSender = senders.find(s => s.track?.kind === 'video');
-      if (videoSender) {
-        await videoSender.replaceTrack(screenVideoTrack);
-        showToast('Ekranınız karşı tarafa gönderiliyor 📺');
-      } else {
-        // Add screen track if no video sender
-        peerConnection.addTrack(screenVideoTrack, screenStream);
+      
+      const incAv = document.getElementById('incoming-avatar');
+      if (incAv) {
+        if (d.callerPhoto) {
+          incAv.innerHTML = '';
+          const img = document.createElement('img');
+          img.src = d.callerPhoto;
+          img.style.cssText = 'width:100%;height:100%;border-radius:50%;object-fit:cover;';
+          incAv.appendChild(img);
+        } else {
+          incAv.textContent = d.callerInitials || '?';
+          incAv.style.background = (d.callerColor || '#00a884') + '22';
+          incAv.style.color = d.callerColor || '#00a884';
+        }
       }
       
-      // Show screen locally too
-      const localVid = document.getElementById('local-video');
-      if (localVid) {
-        localVid.srcObject = screenStream;
-        localVid.play().catch(() => {});
+      const nameEl = document.getElementById('incoming-caller-name');
+      if (nameEl) nameEl.textContent = d.callerName || '?';
+      
+      const labelEl = document.querySelector('.incoming-label');
+      if (labelEl) labelEl.textContent = d.isVideo ? 'Gelen Görüntülü Arama' : 'Gelen Sesli Arama';
+      
+      document.getElementById('incomingCallUI').classList.add('open');
+      
+      // Sound notification
+      playNotifSound();
+      if (savedSettings.notif !== false && 'Notification' in window && Notification.permission === 'granted') {
+        try { new Notification('Kiwi - Gelen Arama', { body: (d.callerName || '?') + ' arıyor' }); } catch(e) {}
       }
-    } else if (activeChat) {
-      // Not in call - send as screenshot image
-      const vid = document.createElement('video');
-      vid.srcObject = screenStream;
-      vid.autoplay = true;
-      vid.muted = true;
-      vid.addEventListener('loadedmetadata', async () => {
-        await new Promise(r => setTimeout(r, 300));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.min(vid.videoWidth, 1280);
-        canvas.height = Math.min(vid.videoHeight, 720);
-        canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        try {
-          const ref = storageRef(storage, `screenshots/${me.uid}_${Date.now()}.jpg`);
-          await uploadString(ref, dataUrl, 'data_url');
-          const url = await getDownloadURL(ref);
-          await sendMessageData({ type: 'image', url, fileName: 'ekran.jpg' });
-        } catch(e) {
-          await sendMessageData({ type: 'image', url: dataUrl, fileName: 'ekran.jpg' });
+      
+      // Auto reject after 45s if not answered
+      setTimeout(() => {
+        if (document.getElementById('incomingCallUI').classList.contains('open')) {
+          rejectCall();
         }
-        showToast('Ekran görüntüsü gönderildi ✅');
-        stopScreenShare();
-      });
-    }
-    
-    // Stop when user clicks "Stop sharing"
-    screenVideoTrack.addEventListener('ended', () => stopScreenShare());
-    
-  } catch(e) {
-    if (e.name !== 'NotAllowedError') showToast('Ekran paylaşımı hatası: ' + e.message);
-    screenSharing = false;
-  }
-}
-
-async function stopScreenShare() {
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
-    screenStream = null;
-  }
-  screenSharing = false;
-  
-  // Restore camera if in video call
-  if (peerConnection && callIsActive && isVideoCall && localStream) {
-    try {
-      const camTrack = localStream.getVideoTracks()[0];
-      if (camTrack) {
-        const senders = peerConnection.getSenders();
-        const videoSender = senders.find(s => s.track?.kind === 'video');
-        if (videoSender) await videoSender.replaceTrack(camTrack);
-      }
-      // Restore local video preview
-      const localVid = document.getElementById('local-video');
-      if (localVid) {
-        localVid.srcObject = new MediaStream([camTrack]);
-        localVid.play().catch(() => {});
-      }
-    } catch(e) { console.log('restore cam:', e); }
-  }
-  showToast('Ekran paylaşımı durduruldu');
-  const ind = document.getElementById('screenShareIndicator');
-  if (ind) ind.classList.remove('show');
-}
-
-// ── BACKGROUND CALL (keep alive when app hidden) ──
-let bgCallInterval = null;
-let callIsActive = false;
-
-function startBgCallKeepAlive() {
-  callIsActive = true;
-  // Use wake lock if available (keeps screen on)
-  if ('wakeLock' in navigator) {
-    navigator.wakeLock.request('screen').catch(() => {});
-  }
-  // Ping every 5s to keep WebRTC alive
-  bgCallInterval = setInterval(() => {
-    if (!callIsActive || !peerConnection) { clearInterval(bgCallInterval); return; }
-    // Send a keepalive via RTDB
-    if (callRoomId) {
-      dbSet(dbRef(rtdb, callRoomId + '/ping'), Date.now()).catch(() => {});
-    }
-  }, 5000);
-}
-
-function stopBgCallKeepAlive() {
-  callIsActive = false;
-  clearInterval(bgCallInterval);
-}
-
-// Override startCallTimer to also start bg keepalive
-// startCallTimer enhanced above
-
-// Override endCall to stop keepalive
-// endCall enhanced above
-
-// visibilitychange handler merged with the main one above
-
-// ── DO NOT DISTURB MODE ──
-let dndMode = false;
-function toggleDND() {
-  dndMode = !dndMode;
-  savedSettings.dnd = dndMode;
-  localStorage.setItem('kiwi_settings', JSON.stringify(savedSettings));
-  showToast(dndMode ? 'Rahatsız Etme modu açık 🔕' : 'Bildirimler açık 🔔');
-}
-
-// ── MESSAGE STATUS BAR (typing "..." animation) ──
-function updateStatusBar(text) {
-  const sub = document.querySelector('.chat-sub');
-  if (sub) {
-    sub.textContent = text;
-    sub.className = 'chat-sub off';
-  }
-}
-
-// ── READ TIMER (auto-delete messages) ──
-async function setAutoDelete(hours) {
-  if (!activeChat) return;
-  const path = activeChat.isGroup 
-    ? ['groups', activeChat.uid]
-    : ['users', activeChat.uid];
-  showToast(`Mesajlar ${hours}s sonra silinecek ⏰`);
-}
-
-// ── CHAT WALLPAPER ──
-const WALLPAPERS = [
-  'linear-gradient(135deg,#111b21 0%,#1a2a35 100%)',
-  'linear-gradient(135deg,#0d1117 0%,#1a1a2e 50%,#16213e 100%)',
-  'linear-gradient(135deg,#0a1628 0%,#1a3050 100%)',
-  'linear-gradient(135deg,#110d1e 0%,#2d1f50 100%)',
-  'linear-gradient(135deg,#0a1a12 0%,#1a3a26 100%)',
-  'repeating-linear-gradient(45deg,rgba(0,168,132,.03) 0px,rgba(0,168,132,.03) 1px,transparent 1px,transparent 50%),linear-gradient(135deg,#111b21,#202c33)',
-];
-let currentWallpaper = 0;
-function cycleWallpaper() {
-  currentWallpaper = (currentWallpaper + 1) % WALLPAPERS.length;
-  const msgs = document.getElementById('messages');
-  if (msgs) msgs.style.background = WALLPAPERS[currentWallpaper];
-  localStorage.setItem('kiwi_wallpaper', currentWallpaper);
-  showToast('Arka plan değiştirildi 🎨');
-}
-// Restore wallpaper
-const savedWp = localStorage.getItem('kiwi_wallpaper');
-if (savedWp) {
-  const msgs = document.getElementById('messages');
-  if (msgs) msgs.style.background = WALLPAPERS[parseInt(savedWp)] || WALLPAPERS[0];
-}
-
-// ── FONT SIZE SLIDER ──
-function setFontSize(size) {
-  savedSettings.fontSize = String(size);
-  localStorage.setItem('kiwi_settings', JSON.stringify(savedSettings));
-  document.querySelectorAll('.bubble').forEach(b => b.style.fontSize = size + 'px');
-}
-
-// ── SHOW ONLINE TIME ──
-function formatOnlineTime(ts) {
-  if (!ts?.toDate) return '';
-  const d = ts.toDate();
-  return d.toLocaleTimeString('tr-TR', {hour:'2-digit',minute:'2-digit'}) + ' · ' + d.toLocaleDateString('tr-TR',{day:'numeric',month:'short'});
-}
-
-// ── COPY INVITE LINK ──
-function copyInviteLink() {
-  const link = window.location.href;
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(link).then(() => showToast('Link kopyalandı ✅'));
-  } else {
-    showToast('Link: ' + link);
-  }
-}
-
-// ── ADD SCREEN SHARE AND GROUP SEARCH TO ATTACH MENU ──
-function enhanceAttachMenu() {
-  const attMenu = document.getElementById('attach-menu');
-  if (!attMenu || document.getElementById('attach-screen')) return;
-  
-  const screenItem = document.createElement('div');
-  screenItem.className = 'attach-item';
-  screenItem.id = 'attach-screen';
-  screenItem.innerHTML = `<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Ekran Paylaş`;
-  screenItem.addEventListener('click', () => {
-    document.getElementById('attach-menu').classList.remove('open');
-    startScreenShare();
+      }, 45000);
+    });
   });
-  
-  const wallpaperItem = document.createElement('div');
-  wallpaperItem.className = 'attach-item';
-  wallpaperItem.innerHTML = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Arka Plan`;
-  wallpaperItem.addEventListener('click', () => {
-    document.getElementById('attach-menu').classList.remove('open');
-    cycleWallpaper();
-  });
-  
-  attMenu.appendChild(screenItem);
-  attMenu.appendChild(wallpaperItem);
 }
 
-// Add group search button to sidebar header
-function addGroupSearchBtn() {
-  const sHeader = document.querySelector('.s-header');
-  if (!sHeader || document.getElementById('group-search-btn')) return;
-  
-  const btn = document.createElement('button');
-  btn.className = 'icon-btn';
-  btn.id = 'group-search-btn';
-  btn.title = 'Gruplarda Ara';
-  btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><circle cx="20" cy="20" r="3"/><line x1="18" y1="18" x2="23" y2="23"/></svg>`;
-  btn.addEventListener('click', openGroupSearch);
-  
-  // Insert before settings button
-  const settingsBtn = document.getElementById('btn-settings');
-  if (settingsBtn) sHeader.insertBefore(btn, settingsBtn);
-}
+
+// Extra features section merged below
 
 // Call setup functions after init
 const _origInitApp2 = initApp;

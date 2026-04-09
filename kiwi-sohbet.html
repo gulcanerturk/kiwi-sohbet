@@ -648,6 +648,47 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
 @keyframes modalIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* Force emoji rendering on all platforms */
+.typing-bubble, .typing-dot,
+.bubble, .bubble *,
+.toast, .ctx-item,
+button, .mbtn, .modal-btn,
+.citem, .ci-name, .ci-last,
+.attach-item, .admin-btn {
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 
+               'Android Emoji', 'EmojiSymbols', 'Twemoji Mozilla',
+               'Inter', system-ui, sans-serif;
+}
+
+/* Video call overlay */
+#call-video-wrap { z-index: 5 !important; }
+#callScreen .call-actions { 
+  position: relative; 
+  z-index: 10 !important; 
+}
+#callScreen .call-timer {
+  position: relative;
+  z-index: 10 !important;
+}
+
+/* Screen share indicator */
+.screen-share-active {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--red);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 900;
+  display: none;
+}
+.screen-share-active.show { display: block; }
+
+/* Mention notification */
 /* Mention notification */
 .msg-row.mentioned .bubble { 
   box-shadow: 0 0 0 1px rgba(0,168,132,.4);
@@ -951,6 +992,12 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   </div>
 </div>
 
+<!-- ─── SCREEN SHARE INDICATOR ─── -->
+<div class="screen-share-active" id="screenShareIndicator">
+  Ekran paylaşılıyor...
+  <button onclick="stopScreenShare()" style="background:none;border:none;color:#fff;cursor:pointer;margin-left:8px;font-size:13px;font-weight:700;">Durdur</button>
+</div>
+
 <!-- ─── CALL SCREEN ─── -->
 <div id="callScreen">
   <audio id="remote-audio" autoplay playsinline style="display:none;"></audio>
@@ -959,9 +1006,22 @@ html, body { height: 100%; height: 100dvh; overflow: hidden; font-family: 'Inter
   <div class="call-status" id="call-status">Bağlanıyor...</div>
   <div class="call-timer" id="call-timer">00:00</div>
   <div class="call-actions">
-    <button class="call-action-btn mute" id="mute-btn">🎤<span>Sessiz</span></button>
-    <button class="call-action-btn end" id="end-call-btn">📵<span>Kapat</span></button>
-    <button class="call-action-btn spk" id="spk-btn">🔊<span>Hoparlör</span></button>
+    <button class="call-action-btn mute" id="mute-btn" title="Sessiz">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      <span>Sessiz</span>
+    </button>
+    <button class="call-action-btn" id="screen-share-call-btn" title="Ekran Paylaş" onclick="startScreenShare()" style="background:rgba(255,255,255,.1);">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>Ekran</span>
+    </button>
+    <button class="call-action-btn end" id="end-call-btn" title="Aramayı Kapat">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+      <span>Kapat</span>
+    </button>
+    <button class="call-action-btn spk" id="spk-btn" title="Hoparlör">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      <span>Hoparlör</span>
+    </button>
   </div>
 </div>
 
@@ -2105,14 +2165,17 @@ function renderMessages(msgs, peer) {
   // Typing indicator
   if (!isGroup && activeChat?.typing) {
     const tb = document.createElement('div');
-    tb.style.display = 'flex';
-    tb.style.alignItems = 'flex-end';
-    tb.style.gap = '6px';
+    tb.style.cssText = 'display:flex;align-items:flex-end;gap:6px;margin-top:2px;';
     const mAv = document.createElement('div');
     mAv.className = 'msg-av';
-    mAv.style.background = (peer.color || '#00a884') + '22';
-    mAv.style.color = peer.color || '#00a884';
-    mAv.textContent = peer.initials || '?';
+    // Show profile photo if available
+    if (peer.photo) {
+      mAv.innerHTML = `<img src="${peer.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    } else {
+      mAv.style.background = (peer.color || '#00a884') + '22';
+      mAv.style.color = peer.color || '#00a884';
+      mAv.textContent = peer.initials || '?';
+    }
     const typBub = document.createElement('div');
     typBub.className = 'typing-bubble';
     typBub.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
@@ -2864,35 +2927,60 @@ function setupCallAvatar(user) {
 
 // ── VIDEO CALL UI ──
 function setupVideoUI(localS, remoteS) {
-  // Remove existing video elements
   document.getElementById('call-video-wrap')?.remove();
   
+  const callScreen = document.getElementById('callScreen');
   const wrap = document.createElement('div');
   wrap.id = 'call-video-wrap';
-  wrap.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#000;';
+  wrap.style.cssText = 'position:absolute;inset:0;z-index:1;background:#000;display:flex;align-items:center;justify-content:center;';
   
-  // Remote video (large)
+  // Remote video - full screen
   const remoteVid = document.createElement('video');
   remoteVid.id = 'remote-video';
-  remoteVid.autoplay = true;
-  remoteVid.playsInline = true;
-  remoteVid.style.cssText = 'width:100%;max-height:70vh;object-fit:cover;border-radius:12px;background:#111;';
-  if (remoteS) remoteVid.srcObject = remoteS;
+  remoteVid.setAttribute('autoplay', '');
+  remoteVid.setAttribute('playsinline', '');
+  remoteVid.setAttribute('webkit-playsinline', '');
+  remoteVid.muted = false;
+  remoteVid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111;';
+  if (remoteS) {
+    remoteVid.srcObject = remoteS;
+    remoteVid.play().catch(e => console.log('remote play err:', e));
+  }
   
-  // Local video (small, corner)
+  // Local video - small corner
   const localVid = document.createElement('video');
   localVid.id = 'local-video';
-  localVid.autoplay = true;
-  localVid.playsInline = true;
-  localVid.muted = true; // Don't echo own voice
-  localVid.style.cssText = 'position:absolute;bottom:100px;right:16px;width:100px;height:140px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.3);background:#222;';
-  if (localS) localVid.srcObject = localS;
+  localVid.setAttribute('autoplay', '');
+  localVid.setAttribute('playsinline', '');
+  localVid.setAttribute('webkit-playsinline', '');
+  localVid.muted = true;
+  localVid.style.cssText = 'position:absolute;bottom:110px;right:16px;width:110px;height:160px;object-fit:cover;border-radius:14px;border:2px solid rgba(255,255,255,.4);background:#222;z-index:2;box-shadow:0 4px 16px rgba(0,0,0,.5);';
+  if (localS) {
+    // Get original stream's video track (before boost)
+    const videoTracks = localS.getVideoTracks();
+    if (videoTracks.length > 0) {
+      const localVideoStream = new MediaStream([videoTracks[0]]);
+      localVid.srcObject = localVideoStream;
+    } else {
+      localVid.srcObject = localS;
+    }
+    localVid.play().catch(e => console.log('local play err:', e));
+  }
   
   wrap.appendChild(remoteVid);
   wrap.appendChild(localVid);
-  document.getElementById('callScreen').appendChild(wrap);
+  callScreen.appendChild(wrap);
   localVideoEl = localVid;
   remoteVideoEl = remoteVid;
+  
+  // Hide call avatar/name when video is on
+  callScreen.querySelectorAll('.call-avatar, .call-name, .call-status').forEach(el => {
+    el.style.display = 'none';
+  });
+  // Make call-timer and buttons visible above video
+  callScreen.querySelector('.call-actions').style.zIndex = '3';
+  const timerEl = callScreen.querySelector('.call-timer');
+  if (timerEl) { timerEl.style.zIndex = '3'; timerEl.style.position = 'relative'; }
 }
 
 // ── VIDEO CALL BUTTON ──
@@ -2919,14 +3007,25 @@ const AUDIO_BOOST = 2.5; // Increase volume 2.5x
 function boostMicrophone(stream) {
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioContext.createMediaStreamSource(stream);
+    // Only boost audio, keep video tracks intact
+    const audioTracks = stream.getAudioTracks();
+    const videoTracks = stream.getVideoTracks();
+    if (!audioTracks.length) return stream;
+    
+    // Create a new stream with just audio for boosting
+    const audioOnlyStream = new MediaStream(audioTracks);
+    const source = audioContext.createMediaStreamSource(audioOnlyStream);
     gainNode = audioContext.createGain();
     gainNode.gain.value = AUDIO_BOOST;
     const dest = audioContext.createMediaStreamDestination();
     source.connect(gainNode);
     gainNode.connect(dest);
-    // Return boosted stream
-    return dest.stream;
+    
+    // Combine boosted audio + original video into one stream
+    const boostedStream = new MediaStream();
+    dest.stream.getAudioTracks().forEach(t => boostedStream.addTrack(t));
+    videoTracks.forEach(t => boostedStream.addTrack(t)); // preserve video!
+    return boostedStream;
   } catch(e) {
     console.log('Audio boost failed, using original:', e.message);
     return stream;
@@ -2984,17 +3083,23 @@ async function startCall(withVideo = false) {
   localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
   peerConnection.ontrack = ev => {
+    console.log('ontrack fired, streams:', ev.streams.length, 'kind:', ev.track.kind);
+    const remoteStream = ev.streams[0];
+    
+    // Always set audio
     const audio = $('remote-audio');
-    audio.srcObject = ev.streams[0];
-    audio.play().catch(() => {});
-    // If video call, also set remote video
+    audio.srcObject = remoteStream;
+    audio.play().catch(e => console.log('audio play:', e));
+    
     if (isVideoCall) {
       const remoteVid = document.getElementById('remote-video');
       if (remoteVid) {
-        remoteVid.srcObject = ev.streams[0];
-        remoteVid.play().catch(() => {});
+        remoteVid.srcObject = remoteStream;
+        remoteVid.play().catch(e => console.log('video play:', e));
+        remoteVideoEl = remoteVid;
       } else {
-        setupVideoUI(localStream, ev.streams[0]);
+        // Video element not created yet - create it now
+        setupVideoUI(localStream, remoteStream);
       }
     }
   };
@@ -3096,17 +3201,23 @@ async function acceptCall() {
   localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
   peerConnection.ontrack = ev => {
+    console.log('ontrack fired, streams:', ev.streams.length, 'kind:', ev.track.kind);
+    const remoteStream = ev.streams[0];
+    
+    // Always set audio
     const audio = $('remote-audio');
-    audio.srcObject = ev.streams[0];
-    audio.play().catch(() => {});
-    // If video call, also set remote video
+    audio.srcObject = remoteStream;
+    audio.play().catch(e => console.log('audio play:', e));
+    
     if (isVideoCall) {
       const remoteVid = document.getElementById('remote-video');
       if (remoteVid) {
-        remoteVid.srcObject = ev.streams[0];
-        remoteVid.play().catch(() => {});
+        remoteVid.srcObject = remoteStream;
+        remoteVid.play().catch(e => console.log('video play:', e));
+        remoteVideoEl = remoteVid;
       } else {
-        setupVideoUI(localStream, ev.streams[0]);
+        // Video element not created yet - create it now
+        setupVideoUI(localStream, remoteStream);
       }
     }
   };
@@ -3733,59 +3844,74 @@ let screenStream = null;
 let screenSharing = false;
 
 async function startScreenShare() {
-  if (!activeChat) { showToast('Önce bir sohbet aç'); return; }
-  if (screenSharing) { stopScreenShare(); return; }
-  
   if (!navigator.mediaDevices?.getDisplayMedia) {
     showToast('Ekran paylaşımı bu cihazda desteklenmiyor');
     return;
   }
   
+  if (screenSharing) {
+    stopScreenShare();
+    return;
+  }
+  
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'always' },
-      audio: false
+      video: { cursor: 'always', frameRate: { ideal: 15 } },
+      audio: true
     });
     screenSharing = true;
-    showToast('Ekran paylaşımı başladı 📺', 3000);
+    showToast('Ekran paylaşımı başladı', 3000);
+    const ind = document.getElementById('screenShareIndicator');
+    if (ind) ind.classList.add('show');
     
-    // Create video element to capture frames
-    const vid = document.createElement('video');
-    vid.srcObject = screenStream;
-    vid.autoplay = true;
-    vid.muted = true;
+    const screenVideoTrack = screenStream.getVideoTracks()[0];
     
-    vid.addEventListener('loadedmetadata', async () => {
-      // Take screenshot and send as image
-      await new Promise(r => setTimeout(r, 500));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.min(vid.videoWidth, 1280);
-      canvas.height = Math.min(vid.videoHeight, 720);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-      
-      // Send as image message
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      
-      // Upload to storage
-      try {
-        const ref = storageRef(storage, `screenshots/${me.uid}_${Date.now()}.jpg`);
-        await uploadString(ref, dataUrl, 'data_url');
-        const url = await getDownloadURL(ref);
-        await sendMessageData({ type: 'image', url, fileName: 'ekran-görüntüsü.jpg' });
-        showToast('Ekran görüntüsü gönderildi ✅');
-      } catch(e) {
-        // Fallback: send as base64 directly
-        await sendMessageData({ type: 'image', url: dataUrl, fileName: 'ekran.jpg' });
-        showToast('Gönderildi ✅');
+    // If in a call, replace video track with screen track
+    if (peerConnection && callIsActive) {
+      const senders = peerConnection.getSenders();
+      const videoSender = senders.find(s => s.track?.kind === 'video');
+      if (videoSender) {
+        await videoSender.replaceTrack(screenVideoTrack);
+        showToast('Ekranınız karşı tarafa gönderiliyor 📺');
+      } else {
+        // Add screen track if no video sender
+        peerConnection.addTrack(screenVideoTrack, screenStream);
       }
       
-      stopScreenShare();
-    });
+      // Show screen locally too
+      const localVid = document.getElementById('local-video');
+      if (localVid) {
+        localVid.srcObject = screenStream;
+        localVid.play().catch(() => {});
+      }
+    } else if (activeChat) {
+      // Not in call - send as screenshot image
+      const vid = document.createElement('video');
+      vid.srcObject = screenStream;
+      vid.autoplay = true;
+      vid.muted = true;
+      vid.addEventListener('loadedmetadata', async () => {
+        await new Promise(r => setTimeout(r, 300));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(vid.videoWidth, 1280);
+        canvas.height = Math.min(vid.videoHeight, 720);
+        canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        try {
+          const ref = storageRef(storage, `screenshots/${me.uid}_${Date.now()}.jpg`);
+          await uploadString(ref, dataUrl, 'data_url');
+          const url = await getDownloadURL(ref);
+          await sendMessageData({ type: 'image', url, fileName: 'ekran.jpg' });
+        } catch(e) {
+          await sendMessageData({ type: 'image', url: dataUrl, fileName: 'ekran.jpg' });
+        }
+        showToast('Ekran görüntüsü gönderildi ✅');
+        stopScreenShare();
+      });
+    }
     
-    screenStream.getVideoTracks()[0].addEventListener('ended', () => {
-      stopScreenShare();
-    });
+    // Stop when user clicks "Stop sharing"
+    screenVideoTrack.addEventListener('ended', () => stopScreenShare());
     
   } catch(e) {
     if (e.name !== 'NotAllowedError') showToast('Ekran paylaşımı hatası: ' + e.message);
@@ -3793,12 +3919,33 @@ async function startScreenShare() {
   }
 }
 
-function stopScreenShare() {
+async function stopScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
     screenStream = null;
   }
   screenSharing = false;
+  
+  // Restore camera if in video call
+  if (peerConnection && callIsActive && isVideoCall && localStream) {
+    try {
+      const camTrack = localStream.getVideoTracks()[0];
+      if (camTrack) {
+        const senders = peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track?.kind === 'video');
+        if (videoSender) await videoSender.replaceTrack(camTrack);
+      }
+      // Restore local video preview
+      const localVid = document.getElementById('local-video');
+      if (localVid) {
+        localVid.srcObject = new MediaStream([camTrack]);
+        localVid.play().catch(() => {});
+      }
+    } catch(e) { console.log('restore cam:', e); }
+  }
+  showToast('Ekran paylaşımı durduruldu');
+  const ind = document.getElementById('screenShareIndicator');
+  if (ind) ind.classList.remove('show');
 }
 
 // ── BACKGROUND CALL (keep alive when app hidden) ──
